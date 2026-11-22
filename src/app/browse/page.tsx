@@ -1023,7 +1023,7 @@ export default function BrowsePage() {
 
                         <Link
                           href={`/tuitions/${id}`}
-                          className="rounded-xl bg-[#101F32] px-4 py-2.5 text-center text-sm font-bold text-white transition hover:bg-[#B58A39]"
+                          className="rounded-xl bg-[#9f9522] px-4 py-2.5 text-center text-sm font-bold text-white transition hover:bg-[#B58A39]"
                         >
                           View Details
                         </Link>
