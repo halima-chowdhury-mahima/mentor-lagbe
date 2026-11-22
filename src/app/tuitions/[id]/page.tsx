@@ -53,12 +53,9 @@ interface Tuition {
   };
 
   tutorName?: string;
-
-  // Support all existing image field names
   bannerImage?: string;
   image?: string;
   imageUrl?: string;
-
   createdAt?: string;
 }
 
@@ -111,63 +108,93 @@ export default function TuitionDetailsPage() {
   const [applying, setApplying] = useState(false);
   const [message, setMessage] = useState("");
 
-  const loadTuition = useCallback(async () => {
-    if (!id) return;
+  // FETCH TUITION DETAILS
+  useEffect(() => {
+    let isMounted = true;
 
-    setLoading(true);
-    setPageError("");
-
-    try {
-      const response = await axiosInstance.get(`/api/tuitions/${id}`);
-      const result = response.data;
-
-      const item =
-        result.tuition ??
-        result.data?.tuition ??
-        result.data ??
-        result;
-
-      if (!item || !item._id) {
-        throw new Error("Tuition information could not be found.");
+    const fetchTuition = async () => {
+      if (!id) {
+        if (isMounted) {
+          setPageError("Invalid tuition ID.");
+          setLoading(false);
+        }
+        return;
       }
 
-      setTuition(item);
-    } catch (error: unknown) {
-      console.error("Tuition details error:", error);
+      try {
+        const response = await axiosInstance.get(
+          `/api/tuitions/${id}`,
+          { timeout: 15000 }
+        );
 
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Unable to load tuition details.";
+        if (!isMounted) return;
 
-      setPageError(errorMessage);
-      setTuition(null);
-    } finally {
-      setLoading(false);
-    }
+        const result = response.data;
+
+        const item =
+          result?.tuition ??
+          result?.data?.tuition ??
+          result?.data ??
+          result;
+
+        if (!item || !item._id) {
+          throw new Error(
+            "Tuition information could not be found."
+          );
+        }
+
+        setTuition(item);
+        setPageError("");
+      } catch (error: unknown) {
+        if (!isMounted) return;
+
+        console.error("Tuition details error:", error);
+
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "Unable to load tuition details.";
+
+        setPageError(errorMessage);
+        setTuition(null);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void fetchTuition();
+
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
 
+  // LOAD STUDENT BOOKMARK AND APPLICATION STATUS
   const loadStudentData = useCallback(async () => {
     if (!isAuthenticated || !isStudent || !id) {
-      setSaved(false);
-      setHasApplied(false);
-      setApplicationStatus("");
       return;
     }
 
     try {
       const [bookmarkResponse, applicationResponse] =
         await Promise.allSettled([
-          axiosInstance.get("/api/bookmarks"),
-          axiosInstance.get("/api/applications/my-applications"),
+          axiosInstance.get("/api/bookmarks", {
+            timeout: 15000,
+          }),
+          axiosInstance.get(
+            "/api/applications/my-applications",
+            { timeout: 15000 }
+          ),
         ]);
 
       if (bookmarkResponse.status === "fulfilled") {
         const result = bookmarkResponse.value.data;
 
-        const bookmarks = Array.isArray(result.data)
+        const bookmarks = Array.isArray(result?.data)
           ? result.data
-          : Array.isArray(result.bookmarks)
+          : Array.isArray(result?.bookmarks)
             ? result.bookmarks
             : [];
 
@@ -177,9 +204,9 @@ export default function TuitionDetailsPage() {
             id?: string;
             tuitionId?: string;
           }) =>
-            item.tuitionId === id ||
-            item._id === id ||
-            item.id === id
+            String(item.tuitionId || "") === id ||
+            String(item._id || "") === id ||
+            String(item.id || "") === id
         );
 
         setSaved(isSaved);
@@ -188,14 +215,15 @@ export default function TuitionDetailsPage() {
       if (applicationResponse.status === "fulfilled") {
         const result = applicationResponse.value.data;
 
-        const applications: Application[] = Array.isArray(result.data)
-          ? result.data
-          : Array.isArray(result.applications)
-            ? result.applications
-            : [];
+        const applications: Application[] =
+          Array.isArray(result?.data)
+            ? result.data
+            : Array.isArray(result?.applications)
+              ? result.applications
+              : [];
 
         const existingApplication = applications.find(
-          (item) => item.tuitionId === id
+          (item) => String(item.tuitionId) === id
         );
 
         if (existingApplication) {
@@ -213,26 +241,89 @@ export default function TuitionDetailsPage() {
     }
   }, [id, isAuthenticated, isStudent]);
 
+  // FETCH STUDENT DATA AFTER AUTHENTICATION IS READY
   useEffect(() => {
-  let isMounted = true;
-
-  const fetchTuition = async () => {
-    try {
-      // loadTuition-এর ভেতরের API fetch ও state update logic এখানে আনতে হবে।
-    } catch (error) {
-      if (isMounted) {
-        console.error("Failed to load tuition:", error);
-      }
+    if (authLoading || !isAuthenticated || !isStudent) {
+      return;
     }
-  };
 
-  void fetchTuition();
+    let isMounted = true;
 
-  return () => {
-    isMounted = false;
-  };
-}, []);
+    const fetchStudentData = async () => {
+      try {
+        const [bookmarkResponse, applicationResponse] =
+          await Promise.allSettled([
+            axiosInstance.get("/api/bookmarks", {
+              timeout: 15000,
+            }),
+            axiosInstance.get(
+              "/api/applications/my-applications",
+              { timeout: 15000 }
+            ),
+          ]);
 
+        if (!isMounted) return;
+
+        if (bookmarkResponse.status === "fulfilled") {
+          const result = bookmarkResponse.value.data;
+
+          const bookmarks = Array.isArray(result?.data)
+            ? result.data
+            : Array.isArray(result?.bookmarks)
+              ? result.bookmarks
+              : [];
+
+          const isSaved = bookmarks.some(
+            (item: {
+              _id?: string;
+              id?: string;
+              tuitionId?: string;
+            }) =>
+              String(item.tuitionId || "") === id ||
+              String(item._id || "") === id ||
+              String(item.id || "") === id
+          );
+
+          setSaved(isSaved);
+        }
+
+        if (applicationResponse.status === "fulfilled") {
+          const result = applicationResponse.value.data;
+
+          const applications: Application[] =
+            Array.isArray(result?.data)
+              ? result.data
+              : Array.isArray(result?.applications)
+                ? result.applications
+                : [];
+
+          const existingApplication = applications.find(
+            (item) => String(item.tuitionId) === id
+          );
+
+          if (existingApplication) {
+            setHasApplied(true);
+            setApplicationStatus(
+              existingApplication.status || "pending"
+            );
+          } else {
+            setHasApplied(false);
+            setApplicationStatus("");
+          }
+        }
+      } catch (error) {
+        console.error("Student data loading error:", error);
+      }
+    };
+
+    void fetchStudentData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, isAuthenticated, isStudent, id]);
+
+  // BOOKMARK HANDLER
   const handleBookmark = async () => {
     if (!isAuthenticated) {
       toast.error("Please sign in to save this tuition.");
@@ -252,10 +343,12 @@ export default function TuitionDetailsPage() {
     try {
       if (saved) {
         await axiosInstance.delete(`/api/bookmarks/${id}`);
+
         setSaved(false);
         toast.success("Tuition removed from saved.");
       } else {
         await axiosInstance.post(`/api/bookmarks/${id}`);
+
         setSaved(true);
         toast.success("Tuition saved successfully.");
       }
@@ -279,9 +372,12 @@ export default function TuitionDetailsPage() {
     }
   };
 
+  // APPLICATION HANDLER
   const handleApply = async () => {
     if (!isAuthenticated) {
-      toast.error("Please sign in with your student account to apply.");
+      toast.error(
+        "Please sign in with your student account to apply."
+      );
       router.push("/login");
       return;
     }
@@ -296,19 +392,24 @@ export default function TuitionDetailsPage() {
     setApplying(true);
 
     try {
-      const response = await axiosInstance.post("/api/applications", {
-        tuitionId: id,
-        message: message.trim(),
-      });
+      const response = await axiosInstance.post(
+        "/api/applications",
+        {
+          tuitionId: id,
+          message: message.trim(),
+        }
+      );
 
       const result = response.data;
 
       setHasApplied(true);
-      setApplicationStatus(result.data?.status || "pending");
+      setApplicationStatus(
+        result?.data?.status || "pending"
+      );
       setMessage("");
 
       toast.success(
-        result.message ||
+        result?.message ||
           "Your application has been submitted successfully!"
       );
     } catch (error: unknown) {
@@ -342,24 +443,34 @@ export default function TuitionDetailsPage() {
     }
   };
 
+  // LOADING STATE
   if (loading || authLoading) {
     return (
       <PublicLayout>
         <div className="flex min-h-[60vh] items-center justify-center">
-          <Loader2
-            size={38}
-            className="animate-spin text-[#B58A39]"
-          />
+          <div className="flex flex-col items-center gap-4">
+            <Loader2
+              size={38}
+              className="animate-spin text-[#B58A39]"
+            />
+            <p className="text-sm text-muted-foreground">
+              Loading tuition details...
+            </p>
+          </div>
         </div>
       </PublicLayout>
     );
   }
 
+  // ERROR STATE
   if (pageError || !tuition) {
     return (
       <PublicLayout>
         <section className="mx-auto flex min-h-[60vh] max-w-3xl flex-col items-center justify-center px-5 text-center">
-          <AlertCircle size={45} className="mb-4 text-red-500" />
+          <AlertCircle
+            size={45}
+            className="mb-4 text-red-500"
+          />
 
           <h1 className="text-2xl font-extrabold">
             Tuition Not Found
@@ -383,19 +494,17 @@ export default function TuitionDetailsPage() {
   }
 
   const title = tuition.title || tuition.subject;
-
   const schedule = getSchedule(tuition);
   const tuitionType = getTuitionType(tuition);
 
-  // Post Tuition form saves the uploaded image as bannerImage.
-  // Other names are supported for older tuition posts.
   const tuitionImage =
     tuition.bannerImage ||
     tuition.image ||
     tuition.imageUrl ||
     "";
 
-  const monthlySalary = tuition.salary ?? tuition.monthlyFee ?? 0;
+  const monthlySalary =
+    tuition.salary ?? tuition.monthlyFee ?? 0;
 
   return (
     <PublicLayout>
@@ -418,6 +527,8 @@ export default function TuitionDetailsPage() {
                   <img
                     src={tuitionImage}
                     alt={`${title} tuition banner`}
+                    loading="eager"
+                    fetchPriority="high"
                     className="h-64 w-full object-cover sm:h-80 lg:h-[400px]"
                     onError={(event) => {
                       event.currentTarget.style.display = "none";
@@ -429,7 +540,10 @@ export default function TuitionDetailsPage() {
               ) : (
                 <div className="flex h-64 flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#101F32] via-[#1b3453] to-[#314d70] text-white sm:h-80 lg:h-[400px]">
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white/10">
-                    <ImageIcon size={32} className="text-[#E9CB8B]" />
+                    <ImageIcon
+                      size={32}
+                      className="text-[#E9CB8B]"
+                    />
                   </div>
 
                   <p className="text-sm font-semibold text-white/80">
@@ -443,7 +557,9 @@ export default function TuitionDetailsPage() {
               {/* CATEGORY + BOOKMARK */}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="rounded-full bg-[#D9B66F]/15 px-3 py-1.5 text-xs font-bold text-[#A77B2B]">
-                  {tuition.category || tuition.medium || "Academic"}
+                  {tuition.category ||
+                    tuition.medium ||
+                    "Academic"}
                 </span>
 
                 {isStudent && (
@@ -566,24 +682,27 @@ export default function TuitionDetailsPage() {
                     </h2>
 
                     <ul className="mt-4 space-y-3">
-                      {tuition.requirements.map((item, index) => (
-                        <li
-                          key={`${item}-${index}`}
-                          className="flex items-center gap-3 text-sm text-muted-foreground"
-                        >
-                          <CheckCircle2
-                            size={18}
-                            className="shrink-0 text-emerald-600"
-                          />
-                          {item}
-                        </li>
-                      ))}
+                      {tuition.requirements.map(
+                        (item, index) => (
+                          <li
+                            key={`${item}-${index}`}
+                            className="flex items-center gap-3 text-sm text-muted-foreground"
+                          >
+                            <CheckCircle2
+                              size={18}
+                              className="shrink-0 text-emerald-600"
+                            />
+                            {item}
+                          </li>
+                        )
+                      )}
                     </ul>
                   </section>
                 )}
 
               {/* POSTED BY */}
-              {(tuition.tutor?.name || tuition.tutorName) && (
+              {(tuition.tutor?.name ||
+                tuition.tutorName) && (
                 <div className="mt-9 border-t border-border pt-6">
                   <h2 className="text-lg font-extrabold">
                     Posted By
@@ -594,7 +713,8 @@ export default function TuitionDetailsPage() {
                       size={18}
                       className="text-[#B58A39]"
                     />
-                    {tuition.tutor?.name || tuition.tutorName}
+                    {tuition.tutor?.name ||
+                      tuition.tutorName}
                   </p>
                 </div>
               )}
@@ -724,4 +844,3 @@ export default function TuitionDetailsPage() {
     </PublicLayout>
   );
 }
-       
