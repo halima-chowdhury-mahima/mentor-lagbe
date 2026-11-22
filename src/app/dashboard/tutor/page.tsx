@@ -45,9 +45,12 @@ type Tuition = {
   medium?: string;
   location?: string;
   salary?: number;
+  monthlyFee?: number;
   schedule?: string;
   description?: string;
   status?: string;
+  approvalStatus?: string;
+  isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
   applicants?: number;
@@ -134,12 +137,29 @@ async function apiFetch(endpoint: string, options: RequestInit = {}) {
   return result;
 }
 
-function getStatus(status?: string) {
-  const value = (status || "active").toLowerCase();
+function getStatus(
+  status?: string,
+  approvalStatus?: string,
+  isActive?: boolean
+) {
+  const value = (
+    approvalStatus ||
+    status ||
+    "pending"
+  ).toLowerCase();
 
-  if (value === "active" || value === "published") {
+  if (value === "approved" || value === "published") {
+    if (isActive === false) {
+      return {
+        label: "Inactive",
+        className:
+          "bg-slate-500/10 text-slate-600 dark:text-slate-300",
+        dot: "bg-slate-500",
+      };
+    }
+
     return {
-      label: "Active",
+      label: "Approved",
       className:
         "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
       dot: "bg-emerald-500",
@@ -148,7 +168,7 @@ function getStatus(status?: string) {
 
   if (value === "pending") {
     return {
-      label: "Pending",
+      label: "Pending Approval",
       className:
         "bg-amber-500/10 text-amber-700 dark:text-amber-400",
       dot: "bg-amber-500",
@@ -158,22 +178,25 @@ function getStatus(status?: string) {
   if (value === "rejected") {
     return {
       label: "Rejected",
-      className: "bg-red-500/10 text-red-700 dark:text-red-400",
+      className:
+        "bg-red-500/10 text-red-700 dark:text-red-400",
       dot: "bg-red-500",
     };
   }
 
   if (value === "closed" || value === "inactive") {
     return {
-      label: "Closed",
-      className: "bg-slate-500/10 text-slate-600 dark:text-slate-300",
+      label: "Inactive",
+      className:
+        "bg-slate-500/10 text-slate-600 dark:text-slate-300",
       dot: "bg-slate-500",
     };
   }
 
   return {
-    label: status || "Active",
-    className: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+    label: status || approvalStatus || "Pending",
+    className:
+      "bg-blue-500/10 text-blue-700 dark:text-blue-400",
     dot: "bg-blue-500",
   };
 }
@@ -211,8 +234,6 @@ export default function TutorDashboardPage() {
   const [search, setSearch] = useState("");
 
   const loadDashboard = useCallback(async (showRefresh = false) => {
-    await Promise.resolve();
-
     if (showRefresh) {
       setRefreshing(true);
     }
@@ -229,6 +250,7 @@ export default function TutorDashboardPage() {
       await Promise.all(
         items.map(async (item) => {
           const id = getId(item);
+
           if (!id) return;
 
           try {
@@ -270,7 +292,13 @@ export default function TutorDashboardPage() {
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [authLoading, isAuthenticated, isTutor, isAdmin, loadDashboard]);
+  }, [
+    authLoading,
+    isAuthenticated,
+    isTutor,
+    isAdmin,
+    loadDashboard,
+  ]);
 
   const totalApplicants = useMemo(
     () =>
@@ -284,8 +312,17 @@ export default function TutorDashboardPage() {
   const activeTuitions = useMemo(
     () =>
       tuitions.filter((item) => {
-        const status = (item.status || "active").toLowerCase();
-        return status === "active" || status === "published";
+        const approval = (
+          item.approvalStatus ||
+          item.status ||
+          ""
+        ).toLowerCase();
+
+        return (
+          (approval === "approved" ||
+            approval === "published") &&
+          item.isActive !== false
+        );
       }),
     [tuitions]
   );
@@ -293,7 +330,9 @@ export default function TutorDashboardPage() {
   const monthlyBudget = useMemo(
     () =>
       activeTuitions.reduce(
-        (total, item) => total + Number(item.salary || 0),
+        (total, item) =>
+          total +
+          Number(item.monthlyFee ?? item.salary ?? 0),
         0
       ),
     [activeTuitions]
@@ -313,7 +352,9 @@ export default function TutorDashboardPage() {
         item.medium,
       ]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query))
+        .some((value) =>
+          String(value).toLowerCase().includes(query)
+        )
     );
   }, [tuitions, search]);
 
@@ -366,8 +407,12 @@ export default function TutorDashboardPage() {
       <div className="flex min-h-[65vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#D9B66F]/15">
-            <Loader2 className="animate-spin text-[#B58A39]" size={28} />
+            <Loader2
+              className="animate-spin text-[#B58A39]"
+              size={28}
+            />
           </div>
+
           <p className="text-sm font-semibold text-muted-foreground">
             Loading your dashboard...
           </p>
@@ -395,7 +440,8 @@ export default function TutorDashboardPage() {
           href="/login"
           className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#101F32] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#1B3553] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B58A39] focus-visible:ring-offset-2 dark:bg-[#D9B66F] dark:text-[#101F32] dark:hover:bg-[#E9CB8B]"
         >
-          Login to Continue <ArrowRight size={16} className="ml-2" />
+          Login to Continue
+          <ArrowRight size={16} className="ml-2" />
         </Link>
       </div>
     );
@@ -420,7 +466,8 @@ export default function TutorDashboardPage() {
           href="/browse"
           className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-[#101F32] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#1B3553] dark:bg-[#D9B66F] dark:text-[#101F32] dark:hover:bg-[#E9CB8B]"
         >
-          Browse Tuitions <ArrowRight size={16} className="ml-2" />
+          Browse Tuitions
+          <ArrowRight size={16} className="ml-2" />
         </Link>
       </div>
     );
@@ -446,7 +493,7 @@ export default function TutorDashboardPage() {
     {
       label: "Active Posts",
       value: activeTuitions.length.toString().padStart(2, "0"),
-      description: "Currently active tuition posts",
+      description: "Approved and currently active posts",
       icon: CheckCircle2,
       iconBg: "bg-emerald-500/10",
       iconColor: "text-emerald-600 dark:text-emerald-400",
@@ -454,7 +501,7 @@ export default function TutorDashboardPage() {
     {
       label: "Monthly Budget",
       value: formatCurrency(monthlyBudget),
-      description: "Combined salary of active posts",
+      description: "Combined salary of approved active posts",
       icon: Wallet,
       iconBg: "bg-amber-500/10",
       iconColor: "text-[#B58A39] dark:text-[#D9B66F]",
@@ -514,7 +561,9 @@ export default function TutorDashboardPage() {
           Home
         </Link>
         <ChevronRight size={15} />
-        <span className="font-semibold text-foreground">Tutor Dashboard</span>
+        <span className="font-semibold text-foreground">
+          Tutor Dashboard
+        </span>
       </div>
 
       <section>
@@ -523,6 +572,7 @@ export default function TutorDashboardPage() {
             <p className="text-xs font-bold tracking-[0.16em] text-[#B58A39]">
               OVERVIEW
             </p>
+
             <h2 className="mt-1 text-xl font-extrabold text-foreground sm:text-2xl">
               Your Performance
             </h2>
@@ -580,7 +630,7 @@ export default function TutorDashboardPage() {
               </h2>
 
               <p className="mt-2 text-sm text-muted-foreground">
-                View and manage all your published tuition opportunities.
+                View and manage all your tuition opportunities, including pending and rejected posts.
               </p>
             </div>
 
@@ -627,7 +677,9 @@ export default function TutorDashboardPage() {
               </div>
 
               <h3 className="mt-5 text-lg font-extrabold text-foreground">
-                {search ? "No matching tuition posts" : "No tuition posts yet"}
+                {search
+                  ? "No matching tuition posts"
+                  : "No tuition posts yet"}
               </h3>
 
               <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
@@ -658,9 +710,19 @@ export default function TutorDashboardPage() {
             <div className="space-y-4">
               {filteredTuitions.map((item) => {
                 const id = getId(item);
-                const status = getStatus(item.status);
+
+                const status = getStatus(
+                  item.status,
+                  item.approvalStatus,
+                  item.isActive
+                );
+
                 const applicantCount =
                   applicantCounts[id] ?? item.applicants ?? 0;
+
+                const monthlyFee = Number(
+                  item.monthlyFee ?? item.salary ?? 0
+                );
 
                 return (
                   <article
@@ -731,7 +793,7 @@ export default function TutorDashboardPage() {
                         </span>
 
                         <span className="text-xl font-extrabold text-[#A77B2B] dark:text-[#E9CB8B]">
-                          {formatCurrency(Number(item.salary || 0))}
+                          {formatCurrency(monthlyFee)}
                         </span>
                       </div>
                     </div>
@@ -747,7 +809,9 @@ export default function TutorDashboardPage() {
                         </span>
 
                         <span className="text-muted-foreground">
-                          {applicantCount === 1 ? "Applicant" : "Applicants"}
+                          {applicantCount === 1
+                            ? "Applicant"
+                            : "Applicants"}
                         </span>
                       </div>
 
@@ -775,7 +839,10 @@ export default function TutorDashboardPage() {
                           className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3.5 py-2 text-xs font-bold text-red-700 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-300"
                         >
                           {deletingId === id ? (
-                            <Loader2 size={14} className="animate-spin" />
+                            <Loader2
+                              size={14}
+                              className="animate-spin"
+                            />
                           ) : (
                             <Trash2 size={14} />
                           )}
@@ -805,6 +872,7 @@ export default function TutorDashboardPage() {
               <h3 className="font-extrabold text-foreground">
                 All My Tuitions
               </h3>
+
               <p className="mt-1 text-xs text-muted-foreground">
                 View and manage your tuition posts
               </p>
@@ -821,19 +889,18 @@ export default function TutorDashboardPage() {
           href={POST_TUITION_URL}
           className="group flex items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 transition hover:-translate-y-0.5 hover:border-[#D9B66F]/70 hover:shadow-md sm:p-6"
         >
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <Plus size={22} />
-            </div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <Plus size={22} />
+          </div>
 
-            <div>
-              <h3 className="font-extrabold text-foreground">
-                Create New Tuition
-              </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Publish a new tuition opportunity
-              </p>
-            </div>
+          <div className="flex-1">
+            <h3 className="font-extrabold text-foreground">
+              Create New Tuition
+            </h3>
+
+            <p className="mt-1 text-xs text-muted-foreground">
+              Publish a new tuition opportunity
+            </p>
           </div>
 
           <ArrowRight
