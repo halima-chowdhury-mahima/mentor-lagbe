@@ -9,7 +9,7 @@ export interface PaymentRecord {
   userEmail: string;
   userName: string;
   userRole: "student" | "tutor";
-  plan: SubscriptionPlan;
+  plan: SubscriptionPlan | "pro_student" | "pro_tutor";
   planName: string;
   amount: number;
   currency: string;
@@ -23,23 +23,23 @@ export interface PaymentRecord {
 export const paymentService = {
   // Create Student PRO ($10/month) or Tutor PRO ($15/month) checkout
   async createCheckoutSession(plan: SubscriptionPlan): Promise<string> {
-    const endpoint =
-      plan === "student-pro"
-        ? "/api/payments/create-student-checkout"
-        : "/api/payments/create-tutor-checkout";
-
-    const { data } = await axiosInstance.post(endpoint);
+    const { data } = await axiosInstance.post(
+      "/api/payments/create-checkout-session",
+      { plan }
+    );
 
     const checkoutUrl = data.url ?? data.sessionUrl;
 
     if (!checkoutUrl) {
-      throw new Error("Payment checkout URL was not returned.");
+      throw new Error(
+        data.message || "Payment checkout URL was not returned."
+      );
     }
 
     return checkoutUrl;
   },
 
-  // Verify Stripe Checkout Session after successful payment
+  // Verify Stripe Checkout Session
   async verifyCheckoutSession(sessionId: string): Promise<void> {
     if (!sessionId) {
       throw new Error("Stripe session ID is missing.");
