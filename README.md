@@ -1,36 +1,186 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MentorLagbe — Find the Right Tutor, Achieve More
 
-## Getting Started
+MentorLagbe is an online tuition and tutoring platform that connects students with qualified tutors. Students can explore tuition opportunities, apply for suitable tuition posts, and manage their learning journey. Tutors can create tuition posts, manage applications, and grow their tutoring opportunities.
 
-First, run the development server:
+## 🌐 Live Website
+
+- **Frontend:** [Add your deployed frontend URL]
+- **Backend API:** https://mentorlagbe-server-alpha.vercel.app
+
+## ✨ Key Features
+
+### Authentication
+- Sign up and sign in using email and password.
+- Google authentication.
+- Role-based account access for Students and Tutors.
+- Protected dashboard routes.
+- Secure authentication with Better Auth.
+
+### Student Features
+- Browse and explore available tuition posts.
+- Search and filter tuition opportunities.
+- View detailed tuition information.
+- Apply for suitable tuition opportunities.
+- Bookmark favorite tuition posts.
+- Manage applications and personal profile.
+- Access Student Pro subscription features.
+
+### Tutor Features
+- Create and manage tuition posts.
+- Submit tuition posts for admin approval.
+- Manage student applications.
+- View and update profile information.
+- Access Tutor Pro subscription features.
+
+### Admin Features
+- Manage users and platform activities.
+- Review submitted tuition posts.
+- Approve or reject tuition applications/posts.
+- Manage platform operations.
+
+### Subscription & Payments
+- Student Pro and Tutor Pro plans.
+- Stripe-powered subscription checkout.
+- Secure payment integration.
+- Subscription-based premium features.
+
+## 🛠️ Technology Stack
+
+### Frontend
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- Axios
+- Lucide React
+- Better Auth
+- Stripe
+
+### Backend & Database
+- Node.js
+- Express.js
+- TypeScript
+- MongoDB
+
+### Authentication & Payment
+- Better Auth
+- Google OAuth
+- Stripe
+
+### Deployment
+- Vercel
+
+## 📁 Project Structure
+
+```text
+mentor-lagbe/
+├── public/
+├── src/
+│   ├── app/
+│   │   ├── auth/
+│   │   │   └── google/
+│   │   │       └── callback/
+│   │   │           └── page.tsx
+│   │   ├── login/
+│   │   ├── register/
+│   │   ├── dashboard/
+│   │   ├── browse/
+│   │   └── page.tsx
+│   ├── components/
+│   │   ├── dashboard/
+│   │   ├── home/
+│   │   └── layout/
+│   ├── hooks/
+│   ├── lib/
+│   └── services/
+├── .env.local
+├── package.json
+└── README.md
+```
+
+## ⚙️ Installation & Setup
+
+### 1. Clone the Repository
+
+```bash
+git clone YOUR_FRONTEND_REPOSITORY_URL
+```
+
+### 2. Navigate to the Project
+
+```bash
+cd mentor-lagbe
+```
+
+### 3. Install Dependencies
+
+```bash
+npm install
+```
+
+### 4. Configure Environment Variables
+
+Create a `.env.local` file in the project root:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000
+NEXT_PUBLIC_IMGBB_API_KEY=your_imgbb_api_key
+```
+
+Use your deployed backend URL for production.
+
+### 5. Start the Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📜 Available Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Description |
+|---|---|
+| `npm run dev` | Start development server |
+| `npm run build` | Build production application |
+| `npm run start` | Start production server |
+| `npm run lint` | Run ESLint |
 
-## Learn More
+## 🔐 Environment Variables
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Description |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | Backend API base URL |
+| `NEXT_PUBLIC_IMGBB_API_KEY` | ImgBB image upload API key |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Security Note:** Never add private API secrets, Google Client Secrets, Stripe Secret Keys, or other sensitive credentials to frontend environment variables. Never commit `.env.local` to GitHub.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 💳 Subscription Plans
 
-## Deploy on Vercel
+MentorLagbe offers premium subscription options for both students and tutors.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Student Pro
+- Tutor Pro
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Payments are processed through Stripe Checkout.
+
+## 🚀 Deployment
+
+The frontend is deployed using Vercel.
+
+To deploy your own version:
+
+1. Push the project to GitHub.
+2. Import the repository into Vercel.
+3. Configure the required environment variables.
+4. Deploy the application.
+
+## 🎯 Project Goal
+
+The goal of MentorLagbe is to make finding tuition and connecting with tutors easier, more accessible, and more organized through a user-friendly digital platform.
+
+---
+
+**Built with ❤️ for students and tutors.**
+
+**MentorLagbe — Learn Better, Grow Together.**
