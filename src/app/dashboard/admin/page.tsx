@@ -72,10 +72,33 @@ type Application = {
 
 type Payment = {
   _id: string;
+  userId?: string;
+  name?: string;
+  email?: string;
+  userName?: string;
+  userEmail?: string;
+  userRole?: string;
+  role?: string;
+  plan?: string;
+  planName?: string;
   amount?: number;
   total?: number;
   price?: number;
+  currency?: string;
+  transactionId?: string;
+  stripeSessionId?: string;
+  stripeSubscriptionId?: string;
+  stripePaymentIntentId?: string;
+  paymentStatus?: string;
   status?: string;
+  subscriptionStatus?: string;
+  refundStatus?: string;
+  stripeRefundId?: string;
+  refundId?: string;
+  refundedAmount?: number;
+  paidAt?: string;
+  refundedAt?: string;
+  rejectedAt?: string;
   createdAt?: string;
 };
 
@@ -190,6 +213,53 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
   }
 
   return fallback;
+};
+
+const getPaymentStatus = (payment: Payment) =>
+  payment.paymentStatus || payment.status || "pending";
+
+const getPaymentUserName = (payment: Payment) =>
+  payment.userName || payment.name || "Unknown User";
+
+const getPaymentEmail = (payment: Payment) =>
+  payment.userEmail || payment.email || "—";
+
+const getPaymentCurrency = (payment: Payment) => {
+  const currency = (payment.currency || "usd").toUpperCase();
+
+  return currency === "BDT" ? "BDT" : currency;
+};
+
+const formatPaymentAmount = (
+  amount?: number,
+  currency?: string
+) => {
+  const value = Number(amount ?? 0);
+  const code = (currency || "USD").toUpperCase();
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: code,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+};
+
+const getRefundLabel = (status?: string) => {
+  const value = (status || "not_refunded").toLowerCase();
+
+  if (value === "succeeded" || value === "refunded") {
+    return "Refunded";
+  }
+
+  if (value === "pending" || value === "processing") {
+    return "Refund Pending";
+  }
+
+  if (value === "failed") {
+    return "Refund Failed";
+  }
+
+  return "Not Refunded";
 };
 
 /* =====================================================
@@ -612,22 +682,40 @@ function UsersTable({ items }: { items: AdminUser[] }) {
    PAYMENTS TABLE
 ===================================================== */
 
-function PaymentsTable({ items }: { items: Payment[] }) {
+function PaymentsTable({
+  items,
+  rejectingId,
+  onReject,
+}: {
+  items: Payment[];
+  rejectingId: string | null;
+  onReject: (payment: Payment) => void;
+}) {
   if (items.length === 0) {
     return (
       <EmptyState
         title="No payments found"
-        description="No payment records match your search."
+        description="No Stripe payment records match your search."
       />
     );
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[600px] text-left">
+      <table className="w-full min-w-[1250px] text-left">
         <thead>
           <tr className="border-b border-slate-100 bg-slate-50">
-            {["Payment ID", "Amount", "Status", "Date"].map((heading) => (
+            {[
+              "Customer",
+              "Plan",
+              "Amount",
+              "Payment",
+              "Subscription",
+              "Refund",
+              "Transaction ID",
+              "Date",
+              "Action",
+            ].map((heading) => (
               <th
                 key={heading}
                 className="px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500"
@@ -639,33 +727,169 @@ function PaymentsTable({ items }: { items: Payment[] }) {
         </thead>
 
         <tbody className="divide-y divide-slate-100">
-          {items.map((payment) => (
-            <tr key={payment._id} className="hover:bg-slate-50/80">
-              <td className="px-5 py-4 font-mono text-xs text-slate-500">
-                {payment._id}
-              </td>
+          {items.map((payment) => {
+            const paymentStatus = getPaymentStatus(payment);
+            const refundStatus = (
+              payment.refundStatus || "not_refunded"
+            ).toLowerCase();
 
-              <td className="px-5 py-4 font-bold text-slate-800">
-                {formatCurrency(
-                  payment.amount ?? payment.total ?? payment.price
-                )}
-              </td>
+            const isRefunded = [
+              "succeeded",
+              "refunded",
+            ].includes(refundStatus);
 
-              <td className="px-5 py-4">
-                <StatusBadge status={payment.status} />
-              </td>
+            const isRejecting = rejectingId === payment._id;
 
-              <td className="px-5 py-4 text-sm text-slate-500">
-                {formatDate(payment.createdAt)}
-              </td>
-            </tr>
-          ))}
+            const isPaid = [
+              "paid",
+              "succeeded",
+              "success",
+              "completed",
+            ].includes(paymentStatus.toLowerCase());
+
+            const canRefund =
+              isPaid &&
+              !isRefunded &&
+              Boolean(payment.stripeSubscriptionId) &&
+              Boolean(
+                payment.stripePaymentIntentId ||
+                payment.transactionId
+              );
+
+            return (
+              <tr
+                key={payment._id}
+                className="transition hover:bg-slate-50/80"
+              >
+                <td className="px-5 py-4">
+                  <p className="font-bold text-slate-800">
+                    {getPaymentUserName(payment)}
+                  </p>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    {getPaymentEmail(payment)}
+                  </p>
+
+                  <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold capitalize text-slate-600">
+                    {payment.userRole || payment.role || "User"}
+                  </span>
+                </td>
+
+                <td className="px-5 py-4">
+                  <p className="text-sm font-bold text-slate-800">
+                    {payment.planName || payment.plan || "Pro Plan"}
+                  </p>
+                </td>
+
+                <td className="px-5 py-4">
+                  <p className="font-extrabold text-slate-800">
+                    {formatPaymentAmount(
+                      payment.amount ?? payment.total ?? payment.price,
+                      getPaymentCurrency(payment)
+                    )}
+                  </p>
+
+                  {typeof payment.refundedAmount === "number" &&
+                    payment.refundedAmount > 0 && (
+                      <p className="mt-1 text-xs text-rose-600">
+                        Refunded:{" "}
+                        {formatPaymentAmount(
+                          payment.refundedAmount,
+                          getPaymentCurrency(payment)
+                        )}
+                      </p>
+                    )}
+                </td>
+
+                <td className="px-5 py-4">
+                  <StatusBadge status={paymentStatus} />
+                </td>
+
+                <td className="px-5 py-4">
+                  <StatusBadge
+                    status={
+                      payment.subscriptionStatus ||
+                      (isRefunded ? "canceled" : "active")
+                    }
+                  />
+                </td>
+
+                <td className="px-5 py-4">
+                  <StatusBadge status={getRefundLabel(refundStatus)} />
+
+                  {payment.refundedAt && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      {formatDate(payment.refundedAt)}
+                    </p>
+                  )}
+
+                  {payment.stripeRefundId && (
+                    <p
+                      className="mt-1 max-w-[130px] truncate font-mono text-[10px] text-slate-400"
+                      title={payment.stripeRefundId}
+                    >
+                      {payment.stripeRefundId}
+                    </p>
+                  )}
+                </td>
+
+                <td className="px-5 py-4">
+                  <p
+                    className="max-w-[160px] truncate font-mono text-xs text-slate-500"
+                    title={
+                      payment.transactionId ||
+                      payment.stripePaymentIntentId ||
+                      "Unavailable"
+                    }
+                  >
+                    {payment.transactionId ||
+                      payment.stripePaymentIntentId ||
+                      "Unavailable"}
+                  </p>
+                </td>
+
+                <td className="px-5 py-4 text-sm text-slate-500">
+                  {formatDate(payment.paidAt || payment.createdAt)}
+                </td>
+
+                <td className="px-5 py-4">
+                  {isRefunded ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+                      <CheckCircle2 size={14} />
+                      Refunded
+                    </span>
+                  ) : canRefund ? (
+                    <button
+                      type="button"
+                      disabled={isRejecting}
+                      onClick={() => onReject(payment)}
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isRejecting ? (
+                        <Loader2
+                          size={14}
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <XCircle size={14} />
+                      )}
+
+                      {isRejecting ? "Processing..." : "Reject & Refund"}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-400">
+                      Not available
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
-
 /* =====================================================
    MAIN ADMIN DASHBOARD
 ===================================================== */
@@ -682,6 +906,8 @@ export default function AdminDashboardPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [rejectingPaymentId, setRejectingPaymentId] =
+  useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -883,22 +1109,35 @@ export default function AdminDashboardPage() {
   }, [users, searchTerm]);
 
   const filteredPayments = useMemo(() => {
-    const search = searchTerm.toLowerCase().trim();
+  const search = searchTerm.toLowerCase().trim();
 
-    return payments.filter((payment) =>
-      [
-        payment._id,
-        payment.status,
-        payment.amount,
-        payment.total,
-        payment.price,
-      ]
-        .filter(Boolean)
-        .some((value) =>
-          String(value).toLowerCase().includes(search)
-        )
-    );
-  }, [payments, searchTerm]);
+  return payments.filter((payment) =>
+    [
+      payment._id,
+      payment.name,
+      payment.userName,
+      payment.email,
+      payment.userEmail,
+      payment.userRole,
+      payment.plan,
+      payment.planName,
+      payment.status,
+      payment.paymentStatus,
+      payment.subscriptionStatus,
+      payment.refundStatus,
+      payment.transactionId,
+      payment.stripePaymentIntentId,
+      payment.stripeSubscriptionId,
+      payment.stripeRefundId,
+      payment.amount,
+      payment.currency,
+    ]
+      .filter((value) => value !== undefined && value !== null)
+      .some((value) =>
+        String(value).toLowerCase().includes(search)
+      )
+  );
+}, [payments, searchTerm]);
 
   /* UPDATE TUITION */
 
@@ -1025,6 +1264,59 @@ const updateApplicationStatus = async (
     toast.error(message, { id: toastId });
   } finally {
     setUpdatingId(null);
+  }
+};
+
+
+const rejectAndRefundPayment = async (payment: Payment) => {
+  if (!payment._id) {
+    toast.error("Payment ID is missing.");
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Reject ${getPaymentUserName(payment)}'s ${payment.planName || "Pro"} subscription and refund the initial payment?`
+  );
+
+  if (!confirmed) return;
+
+  setRejectingPaymentId(payment._id);
+
+  const toastId = toast.loading(
+    "Canceling subscription and processing refund..."
+  );
+
+  try {
+    // This endpoint is from the payment.routes.ts version
+    // previously shared in our conversation.
+    const response = await axiosInstance.post(
+      `/api/payments/admin/${payment._id}/reject`
+    );
+
+    if (response.data?.success === false) {
+      throw new Error(
+        response.data?.message ||
+          "Unable to reject and refund this payment."
+      );
+    }
+
+    toast.success(
+      response.data?.message ||
+        "Subscription cancellation and refund request completed.",
+      { id: toastId }
+    );
+
+    await loadDashboard(true);
+  } catch (error: unknown) {
+    toast.error(
+      getApiErrorMessage(
+        error,
+        "Unable to process the refund. Please check the payment record."
+      ),
+      { id: toastId }
+    );
+  } finally {
+    setRejectingPaymentId(null);
   }
 };
 
@@ -1185,7 +1477,7 @@ const updateApplicationStatus = async (
                     onClick={() => changeTab(item.id)}
                     className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
                       active
-                        ? "bg-[#D6B36C] text-[#101827] shadow-lg"
+                        ? "bg-[#D6B36C] text-[#152137] shadow-lg"
                         : "text-slate-400 hover:bg-white/5 hover:text-white"
                     }`}
                   >
@@ -1302,7 +1594,7 @@ const updateApplicationStatus = async (
                   MentorLagbe / Admin
                 </p>
 
-                <h1 className="mt-0.5 text-lg font-bold text-[#101827] sm:text-xl">
+                <h1 className="mt-0.5 text-lg font-bold text-[#213457] sm:text-xl">
                   {navigation.find((item) => item.id === activeTab)?.label}
                 </h1>
               </div>
@@ -1716,7 +2008,7 @@ const updateApplicationStatus = async (
                   </div>
 
                   <SearchBox
-                    placeholder="Search name, email or role..."
+                    placeholder="Search customer, email, plan or transaction..."
                     value={searchTerm}
                     onChange={setSearchTerm}
                   />
@@ -1806,7 +2098,11 @@ const updateApplicationStatus = async (
                     </p>
                   </div>
 
-                  <PaymentsTable items={filteredPayments} />
+                  <PaymentsTable
+  items={filteredPayments}
+  rejectingId={rejectingPaymentId}
+  onReject={rejectAndRefundPayment}
+/>
                 </div>
 
                 <p className="text-xs leading-5 text-slate-400">

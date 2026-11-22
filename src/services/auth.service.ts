@@ -104,6 +104,7 @@ export const authService = {
         "/api/profile/role",
         { role: payload.role }
       );
+      
 
       // Step 4: Get a fresh JWT containing the selected role.
       await getJwtToken();
