@@ -1429,7 +1429,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
         {/* SIDEBAR */}
 
         <aside
-          className={`fixed inset-y-0 left-0 z-50 flex w-[265px] flex-col bg-[#2a4b8d] text-white transition-transform duration-300 lg:static lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-50 flex w-[265px] flex-col bg-[#8e9c15] text-white transition-transform duration-300 lg:static lg:translate-x-0 ${
             mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -1707,7 +1707,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                       <button
                         type="button"
                         onClick={() => changeTab("applications")}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-[#D6B36C] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#E8CA89]"
                       >
                         Applications
                         <ChevronRight size={16} />
