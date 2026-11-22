@@ -12,6 +12,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  Crown,
   FileText,
   GraduationCap,
   MapPin,
@@ -343,10 +344,19 @@ export default function StudentDashboardPage() {
 
         <div className="flex flex-col justify-between gap-7 lg:flex-row lg:items-center">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#D9B66F]/30 bg-[#D9B66F]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[#E5C783]">
-              <Sparkles size={13} />
-              Student Workspace
-            </div>
+            <div className="flex flex-wrap items-center gap-2">
+  <div className="inline-flex items-center gap-2 rounded-full border border-[#D9B66F]/30 bg-[#D9B66F]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[#E5C783]">
+    <Sparkles size={13} />
+    Student Workspace
+  </div>
+
+  {user.plan === "pro" && (
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-[#E5C783]/50 bg-gradient-to-r from-[#D9B66F] to-[#F0D9A1] px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wider text-[#101F32] shadow-md shadow-[#D9B66F]/20">
+      <Crown size={14} fill="currentColor" />
+      PRO MEMBER
+    </div>
+  )}
+</div>
 
             <h1 className="mt-5 text-3xl font-extrabold tracking-tight sm:text-4xl">
               Welcome back,{" "}

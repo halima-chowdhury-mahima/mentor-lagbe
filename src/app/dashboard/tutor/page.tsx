@@ -23,6 +23,7 @@ import {
   LayoutDashboard,
   ChevronRight,
   Search,
+  Crown,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -516,10 +517,19 @@ export default function TutorDashboardPage() {
 
         <div className="relative flex flex-col justify-between gap-7 lg:flex-row lg:items-center">
           <div className="max-w-2xl">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#D9B66F]/30 bg-[#D9B66F]/10 px-3 py-1.5 text-xs font-bold tracking-[0.16em] text-[#E9CB8B]">
-              <GraduationCap size={15} />
-              TUTOR WORKSPACE
-            </div>
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+  <div className="inline-flex items-center gap-2 rounded-full border border-[#D9B66F]/30 bg-[#D9B66F]/10 px-3 py-1.5 text-xs font-bold tracking-[0.16em] text-[#E9CB8B]">
+    <GraduationCap size={15} />
+    TUTOR WORKSPACE
+  </div>
+
+  {user?.plan === "pro" && (
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-[#E5C783]/50 bg-gradient-to-r from-[#D9B66F] to-[#F0D9A1] px-3 py-1.5 text-[11px] font-extrabold tracking-wider text-[#101F32] shadow-md shadow-[#D9B66F]/20">
+      <Crown size={14} fill="currentColor" />
+      PRO MEMBER
+    </div>
+  )}
+</div>
 
             <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
               Welcome back{user?.name ? `, ${user.name}` : ""}!

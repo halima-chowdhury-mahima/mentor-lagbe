@@ -6,7 +6,6 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   MapPin,
-  Clock3,
   BookOpen,
   ArrowLeft,
   CheckCircle2,
@@ -18,6 +17,7 @@ import {
   UserRound,
   Send,
   AlertCircle,
+  ImageIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -34,22 +34,31 @@ interface Tuition {
   classLevel: string;
   medium?: string;
   location: string;
-  salary: number;
+  salary?: number;
+  monthlyFee?: number;
   schedule?: string;
   daysPerWeek?: number;
   tuitionType?: string;
   type?: string;
+  mode?: string;
   category?: string;
   description?: string;
   requirements?: string[];
   status?: string;
+
   tutor?: {
     _id?: string;
     name?: string;
     email?: string;
   };
+
   tutorName?: string;
+
+  // Support all existing image field names
+  bannerImage?: string;
   image?: string;
+  imageUrl?: string;
+
   createdAt?: string;
 }
 
@@ -70,7 +79,12 @@ function getSchedule(tuition: Tuition) {
 }
 
 function getTuitionType(tuition: Tuition) {
-  return tuition.tuitionType || tuition.type || "Not specified";
+  return (
+    tuition.tuitionType ||
+    tuition.type ||
+    tuition.mode ||
+    "Not specified"
+  );
 }
 
 export default function TuitionDetailsPage() {
@@ -121,12 +135,12 @@ export default function TuitionDetailsPage() {
     } catch (error: unknown) {
       console.error("Tuition details error:", error);
 
-      const message =
+      const errorMessage =
         error instanceof Error
           ? error.message
           : "Unable to load tuition details.";
 
-      setPageError(message);
+      setPageError(errorMessage);
       setTuition(null);
     } finally {
       setLoading(false);
@@ -150,12 +164,19 @@ export default function TuitionDetailsPage() {
 
       if (bookmarkResponse.status === "fulfilled") {
         const result = bookmarkResponse.value.data;
+
         const bookmarks = Array.isArray(result.data)
           ? result.data
-          : [];
+          : Array.isArray(result.bookmarks)
+            ? result.bookmarks
+            : [];
 
         const isSaved = bookmarks.some(
-          (item: { _id?: string; id?: string; tuitionId?: string }) =>
+          (item: {
+            _id?: string;
+            id?: string;
+            tuitionId?: string;
+          }) =>
             item.tuitionId === id ||
             item._id === id ||
             item.id === id
@@ -166,9 +187,12 @@ export default function TuitionDetailsPage() {
 
       if (applicationResponse.status === "fulfilled") {
         const result = applicationResponse.value.data;
+
         const applications: Application[] = Array.isArray(result.data)
           ? result.data
-          : [];
+          : Array.isArray(result.applications)
+            ? result.applications
+            : [];
 
         const existingApplication = applications.find(
           (item) => item.tuitionId === id
@@ -176,7 +200,9 @@ export default function TuitionDetailsPage() {
 
         if (existingApplication) {
           setHasApplied(true);
-          setApplicationStatus(existingApplication.status || "pending");
+          setApplicationStatus(
+            existingApplication.status || "pending"
+          );
         } else {
           setHasApplied(false);
           setApplicationStatus("");
@@ -188,32 +214,24 @@ export default function TuitionDetailsPage() {
   }, [id, isAuthenticated, isStudent]);
 
   useEffect(() => {
-    let cancelled = false;
+  let isMounted = true;
 
-    Promise.resolve().then(async () => {
-      if (cancelled) return;
-      await loadTuition();
-    });
+  const fetchTuition = async () => {
+    try {
+      // loadTuition-এর ভেতরের API fetch ও state update logic এখানে আনতে হবে।
+    } catch (error) {
+      if (isMounted) {
+        console.error("Failed to load tuition:", error);
+      }
+    }
+  };
 
-    return () => {
-      cancelled = true;
-    };
-  }, [loadTuition]);
+  void fetchTuition();
 
-  useEffect(() => {
-    if (authLoading) return;
-
-    let cancelled = false;
-
-    Promise.resolve().then(async () => {
-      if (cancelled) return;
-      await loadStudentData();
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authLoading, loadStudentData]);
+  return () => {
+    isMounted = false;
+  };
+}, []);
 
   const handleBookmark = async () => {
     if (!isAuthenticated) {
@@ -244,12 +262,18 @@ export default function TuitionDetailsPage() {
     } catch (error: unknown) {
       console.error("Bookmark error:", error);
 
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Bookmark operation failed.";
+      const axiosError = error as {
+        response?: {
+          data?: {
+            message?: string;
+          };
+        };
+      };
 
-      toast.error(message);
+      toast.error(
+        axiosError.response?.data?.message ||
+          "Bookmark operation failed."
+      );
     } finally {
       setBookmarkLoading(false);
     }
@@ -284,7 +308,8 @@ export default function TuitionDetailsPage() {
       setMessage("");
 
       toast.success(
-        result.message || "Your application has been submitted successfully!"
+        result.message ||
+          "Your application has been submitted successfully!"
       );
     } catch (error: unknown) {
       console.error("Application submission error:", error);
@@ -301,6 +326,7 @@ export default function TuitionDetailsPage() {
       if (axiosError.response?.status === 409) {
         setHasApplied(true);
         setApplicationStatus("pending");
+
         toast.error(
           axiosError.response.data?.message ||
             "You have already applied for this tuition."
@@ -357,12 +383,23 @@ export default function TuitionDetailsPage() {
   }
 
   const title = tuition.title || tuition.subject;
+
   const schedule = getSchedule(tuition);
   const tuitionType = getTuitionType(tuition);
 
+  // Post Tuition form saves the uploaded image as bannerImage.
+  // Other names are supported for older tuition posts.
+  const tuitionImage =
+    tuition.bannerImage ||
+    tuition.image ||
+    tuition.imageUrl ||
+    "";
+
+  const monthlySalary = tuition.salary ?? tuition.monthlyFee ?? 0;
+
   return (
     <PublicLayout>
-      <section className="mx-auto max-w-5xl px-5 py-12 sm:px-8">
+      <section className="mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:py-14">
         <Link
           href="/browse"
           className="mb-8 inline-flex items-center gap-2 text-sm font-bold text-muted-foreground transition hover:text-foreground"
@@ -371,120 +408,207 @@ export default function TuitionDetailsPage() {
           Back to Browse
         </Link>
 
-        <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
-          <article className="rounded-3xl border border-border bg-card p-7 sm:p-9">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="rounded-full bg-[#D9B66F]/15 px-3 py-1.5 text-xs font-bold text-[#A77B2B]">
-                {tuition.category || tuition.medium || "Academic"}
-              </span>
+        <div className="grid items-start gap-8 lg:grid-cols-[1fr_350px]">
+          <article className="min-w-0 overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+            {/* TUITION IMAGE */}
+            <div className="relative overflow-hidden bg-muted">
+              {tuitionImage ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={tuitionImage}
+                    alt={`${title} tuition banner`}
+                    className="h-64 w-full object-cover sm:h-80 lg:h-[400px]"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
 
-              {isStudent && (
-                <button
-                  type="button"
-                  onClick={() => void handleBookmark()}
-                  disabled={bookmarkLoading}
-                  className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-bold transition hover:border-[#B58A39] hover:text-[#B58A39] disabled:opacity-50"
-                >
-                  {bookmarkLoading ? (
-                    <Loader2 size={17} className="animate-spin" />
-                  ) : saved ? (
-                    <BookmarkCheck size={17} />
-                  ) : (
-                    <Bookmark size={17} />
-                  )}
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+                </>
+              ) : (
+                <div className="flex h-64 flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#101F32] via-[#1b3453] to-[#314d70] text-white sm:h-80 lg:h-[400px]">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white/10">
+                    <ImageIcon size={32} className="text-[#E9CB8B]" />
+                  </div>
 
-                  {saved ? "Saved" : "Save Tuition"}
-                </button>
+                  <p className="text-sm font-semibold text-white/80">
+                    No tuition image available
+                  </p>
+                </div>
               )}
             </div>
 
-            <h1 className="mt-6 text-3xl font-extrabold sm:text-4xl">
-              {title}
-            </h1>
+            <div className="p-6 sm:p-9">
+              {/* CATEGORY + BOOKMARK */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="rounded-full bg-[#D9B66F]/15 px-3 py-1.5 text-xs font-bold text-[#A77B2B]">
+                  {tuition.category || tuition.medium || "Academic"}
+                </span>
 
-            <p className="mt-2 text-base font-semibold text-[#B58A39]">
-              {tuition.subject}
-            </p>
-
-            <p className="mt-2 text-sm text-muted-foreground">
-              {tuition.classLevel}
-            </p>
-
-            <div className="mt-7 grid gap-4 rounded-2xl bg-muted/50 p-5 sm:grid-cols-2">
-              <p className="flex items-center gap-3 text-sm">
-                <MapPin size={18} className="shrink-0 text-[#B58A39]" />
-                {tuition.location}
-              </p>
-
-              <p className="flex items-center gap-3 text-sm">
-                <CalendarDays size={18} className="shrink-0 text-[#B58A39]" />
-                {schedule}
-              </p>
-
-              <p className="flex items-center gap-3 text-sm">
-                <BookOpen size={18} className="shrink-0 text-[#B58A39]" />
-                {tuitionType}
-              </p>
-
-              <p className="flex items-center gap-3 text-sm">
-                <GraduationCap size={18} className="shrink-0 text-[#B58A39]" />
-                {tuition.medium || "Medium not specified"}
-              </p>
-            </div>
-
-            <h2 className="mt-9 text-xl font-extrabold">
-              Tuition Description
-            </h2>
-
-            <p className="mt-3 whitespace-pre-line text-sm leading-8 text-muted-foreground">
-              {tuition.description ||
-                "No additional description has been provided for this tuition."}
-            </p>
-
-            {tuition.requirements && tuition.requirements.length > 0 && (
-              <>
-                <h2 className="mt-9 text-xl font-extrabold">
-                  Tutor Requirements
-                </h2>
-
-                <ul className="mt-4 space-y-3">
-                  {tuition.requirements.map((item, index) => (
-                    <li
-                      key={`${item}-${index}`}
-                      className="flex items-center gap-3 text-sm text-muted-foreground"
-                    >
-                      <CheckCircle2
-                        size={18}
-                        className="shrink-0 text-emerald-600"
+                {isStudent && (
+                  <button
+                    type="button"
+                    onClick={() => void handleBookmark()}
+                    disabled={bookmarkLoading}
+                    className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-bold transition hover:border-[#B58A39] hover:text-[#B58A39] disabled:opacity-50"
+                  >
+                    {bookmarkLoading ? (
+                      <Loader2
+                        size={17}
+                        className="animate-spin"
                       />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
+                    ) : saved ? (
+                      <BookmarkCheck size={17} />
+                    ) : (
+                      <Bookmark size={17} />
+                    )}
 
-            {(tuition.tutor?.name || tuition.tutorName) && (
-              <div className="mt-9 border-t border-border pt-6">
-                <h2 className="text-lg font-extrabold">
-                  Posted By
+                    {saved ? "Saved" : "Save Tuition"}
+                  </button>
+                )}
+              </div>
+
+              {/* TITLE */}
+              <h1 className="mt-6 break-words text-3xl font-extrabold leading-tight sm:text-4xl">
+                {title}
+              </h1>
+
+              <p className="mt-3 text-base font-bold text-[#B58A39]">
+                {tuition.subject}
+              </p>
+
+              <p className="mt-2 text-sm text-muted-foreground">
+                {tuition.classLevel}
+              </p>
+
+              {/* QUICK INFORMATION */}
+              <div className="mt-7 grid gap-4 rounded-2xl bg-muted/50 p-5 sm:grid-cols-2">
+                <div className="flex items-center gap-3 text-sm">
+                  <MapPin
+                    size={19}
+                    className="shrink-0 text-[#B58A39]"
+                  />
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Location
+                    </p>
+                    <p className="mt-1 font-semibold">
+                      {tuition.location}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 text-sm">
+                  <CalendarDays
+                    size={19}
+                    className="shrink-0 text-[#B58A39]"
+                  />
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Schedule
+                    </p>
+                    <p className="mt-1 font-semibold">
+                      {schedule}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 text-sm">
+                  <BookOpen
+                    size={19}
+                    className="shrink-0 text-[#B58A39]"
+                  />
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Tuition Type
+                    </p>
+                    <p className="mt-1 font-semibold">
+                      {tuitionType}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 text-sm">
+                  <GraduationCap
+                    size={19}
+                    className="shrink-0 text-[#B58A39]"
+                  />
+                  <div>
+                    <p className="text-xs text-muted-foreground">
+                      Medium
+                    </p>
+                    <p className="mt-1 font-semibold">
+                      {tuition.medium || "Not specified"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* DESCRIPTION */}
+              <section className="mt-9">
+                <h2 className="text-xl font-extrabold">
+                  Tuition Description
                 </h2>
 
-                <p className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
-                  <UserRound size={18} className="text-[#B58A39]" />
-                  {tuition.tutor?.name || tuition.tutorName}
+                <p className="mt-3 whitespace-pre-line text-sm leading-8 text-muted-foreground">
+                  {tuition.description ||
+                    "No additional description has been provided for this tuition."}
                 </p>
-              </div>
-            )}
+              </section>
+
+              {/* REQUIREMENTS */}
+              {tuition.requirements &&
+                tuition.requirements.length > 0 && (
+                  <section className="mt-9">
+                    <h2 className="text-xl font-extrabold">
+                      Tutor Requirements
+                    </h2>
+
+                    <ul className="mt-4 space-y-3">
+                      {tuition.requirements.map((item, index) => (
+                        <li
+                          key={`${item}-${index}`}
+                          className="flex items-center gap-3 text-sm text-muted-foreground"
+                        >
+                          <CheckCircle2
+                            size={18}
+                            className="shrink-0 text-emerald-600"
+                          />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+              {/* POSTED BY */}
+              {(tuition.tutor?.name || tuition.tutorName) && (
+                <div className="mt-9 border-t border-border pt-6">
+                  <h2 className="text-lg font-extrabold">
+                    Posted By
+                  </h2>
+
+                  <p className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
+                    <UserRound
+                      size={18}
+                      className="text-[#B58A39]"
+                    />
+                    {tuition.tutor?.name || tuition.tutorName}
+                  </p>
+                </div>
+              )}
+            </div>
           </article>
 
-          <aside className="h-fit rounded-3xl border border-border bg-card p-7">
+          {/* APPLICATION SIDEBAR */}
+          <aside className="h-fit rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-7 lg:sticky lg:top-24">
             <p className="text-sm text-muted-foreground">
               Monthly salary
             </p>
 
-            <p className="mt-2 text-3xl font-extrabold text-[#B58A39]">
-              {formatCurrency(tuition.salary)}
+            <p className="mt-2 break-words text-3xl font-extrabold text-[#B58A39]">
+              {formatCurrency(monthlySalary)}
             </p>
 
             <div className="my-6 h-px bg-border" />
@@ -529,7 +653,9 @@ export default function TuitionDetailsPage() {
                     id="application-message"
                     rows={4}
                     value={message}
-                    onChange={(event) => setMessage(event.target.value)}
+                    onChange={(event) =>
+                      setMessage(event.target.value)
+                    }
                     maxLength={1000}
                     placeholder="Introduce yourself and explain why you are interested..."
                     className="w-full resize-y rounded-xl border border-border bg-background p-3 text-sm outline-none transition focus:border-[#B58A39]"
@@ -548,7 +674,10 @@ export default function TuitionDetailsPage() {
                 >
                   {applying ? (
                     <>
-                      <Loader2 size={17} className="animate-spin" />
+                      <Loader2
+                        size={17}
+                        className="animate-spin"
+                      />
                       Submitting...
                     </>
                   ) : (
@@ -573,7 +702,7 @@ export default function TuitionDetailsPage() {
               <>
                 <Link
                   href="/login"
-                  className="mt-6 block rounded-xl bg-[#b1ae28] px-5 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#2f72bd]"
+                  className="mt-6 block rounded-xl bg-[#101F32] px-5 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#1c3552]"
                 >
                   Sign In to Apply
                 </Link>
@@ -595,3 +724,4 @@ export default function TuitionDetailsPage() {
     </PublicLayout>
   );
 }
+       
