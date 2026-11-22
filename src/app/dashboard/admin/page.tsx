@@ -1429,7 +1429,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
         {/* SIDEBAR */}
 
         <aside
-          className={`fixed inset-y-0 left-0 z-50 flex w-[265px] flex-col bg-[#0B1220] text-white transition-transform duration-300 lg:static lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-50 flex w-[265px] flex-col bg-[#2a4b8d] text-white transition-transform duration-300 lg:static lg:translate-x-0 ${
             mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
