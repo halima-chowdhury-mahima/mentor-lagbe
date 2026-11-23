@@ -1042,7 +1042,7 @@ export default function AdminDashboardPage() {
         axiosInstance.get<ApiResponse<Application>>(
           "/api/admin/applications"
         ),
-        axiosInstance.get<ApiResponse<Payment>>("/api/admin/payments"),
+        axiosInstance.get<ApiResponse<Payment>>("/api/payments/admin/all"),
       ]);
 
       const failedSections: string[] = [];

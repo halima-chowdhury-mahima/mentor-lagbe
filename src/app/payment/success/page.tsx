@@ -136,7 +136,7 @@ function PaymentSuccessContent() {
 
             <Link
               href="/dashboard"
-              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#101F32] px-6 py-3.5 text-sm font-bold text-white transition hover:bg-[#1c3552]"
+              className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#285289] px-6 py-3.5 text-sm font-bold text-white transition hover:bg-[#1c3552]"
             >
               Go to Dashboard
               <ArrowRight size={17} />

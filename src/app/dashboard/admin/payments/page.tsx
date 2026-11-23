@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   RefreshCw,
   Search,
@@ -46,6 +47,8 @@ type ApiErrorResponse = {
   message?: string;
 };
 
+const PAYMENT_LIST_ENDPOINT = "/api/payments/admin/all";
+
 function getErrorMessage(
   error: unknown,
   fallback: string
@@ -53,10 +56,7 @@ function getErrorMessage(
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<ApiErrorResponse>;
 
-    return (
-      axiosError.response?.data?.message ||
-      fallback
-    );
+    return axiosError.response?.data?.message || fallback;
   }
 
   if (error instanceof Error) {
@@ -64,6 +64,32 @@ function getErrorMessage(
   }
 
   return fallback;
+}
+
+function getPaymentArray(responseData: unknown): Payment[] {
+  if (Array.isArray(responseData)) {
+    return responseData as Payment[];
+  }
+
+  if (
+    typeof responseData === "object" &&
+    responseData !== null
+  ) {
+    const payload = responseData as {
+      data?: unknown;
+      payments?: unknown;
+    };
+
+    if (Array.isArray(payload.data)) {
+      return payload.data as Payment[];
+    }
+
+    if (Array.isArray(payload.payments)) {
+      return payload.payments as Payment[];
+    }
+  }
+
+  return [];
 }
 
 export default function AdminPaymentsPage() {
@@ -75,105 +101,199 @@ export default function AdminPaymentsPage() {
     null
   );
 
-  /*
-   * Initial payment loading.
-   *
-   * We intentionally keep this request inside the effect instead of
-   * calling a state-updating callback from the effect dependency list.
-   * This avoids React's cascading-render warning.
-   */
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadPayments = async () => {
+  // Load and refresh payments from the correct backend endpoint.
+  const fetchPayments = useCallback(
+    async (showToast = false): Promise<void> => {
       try {
         const response = await axiosInstance.get(
-          "/api/admin/payments"
+          PAYMENT_LIST_ENDPOINT
         );
 
-        const data =
-          response.data?.data ??
-          response.data?.payments ??
-          response.data;
+        const data = getPaymentArray(response.data);
 
-        if (!cancelled) {
-          setPayments(Array.isArray(data) ? data : []);
-          setLoading(false);
+        setPayments(data);
+
+        if (showToast) {
+          toast.success("Payment records refreshed.");
         }
       } catch (error: unknown) {
         console.error("Payment loading error:", error);
 
-        if (!cancelled) {
-          setLoading(false);
-
-          toast.error(
-            getErrorMessage(
-              error,
-              "Unable to load payment records."
-            )
-          );
-        }
+        toast.error(
+          getErrorMessage(
+            error,
+            "Unable to load payment records."
+          )
+        );
+      } finally {
+        setLoading(false);
       }
-    };
+    },
+    []
+  );
 
-    void loadPayments();
+ useEffect(() => {
+  let cancelled = false;
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  /*
-   * Reusable payment fetch for refresh and after
-   * approve/reject operations.
-   */
-  const fetchPayments = async (
-    showToast = false
-  ): Promise<void> => {
+  const loadInitialPayments = async () => {
     try {
       const response = await axiosInstance.get(
-        "/api/admin/payments"
+        PAYMENT_LIST_ENDPOINT
       );
 
-      const data =
-        response.data?.data ??
-        response.data?.payments ??
-        response.data;
+      const data = getPaymentArray(response.data);
 
-      setPayments(Array.isArray(data) ? data : []);
-
-      if (showToast) {
-        toast.success("Payment records refreshed.");
+      if (!cancelled) {
+        setPayments(data);
       }
     } catch (error: unknown) {
       console.error("Payment loading error:", error);
 
-      toast.error(
-        getErrorMessage(
-          error,
-          "Unable to load payment records."
-        )
-      );
+      if (!cancelled) {
+        toast.error(
+          getErrorMessage(
+            error,
+            "Unable to load payment records."
+          )
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!cancelled) {
+        setLoading(false);
+      }
     }
   };
 
+  void loadInitialPayments();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
   const handleRefresh = async (): Promise<void> => {
+    if (processingId) return;
+
     setLoading(true);
     await fetchPayments(true);
   };
 
-  /*
-   * Approve payment and activate PRO through backend.
-   */
-  const handleApprove = async (
-    paymentId: string
-  ): Promise<void> => {
+  const getApprovalStatus = (payment: Payment): string => {
+    return payment.approvalStatus?.toLowerCase() || "pending";
+  };
+
+  const getRefundStatus = (payment: Payment): string => {
+    return payment.refundStatus?.toLowerCase() || "";
+  };
+
+  const isPaid = (payment: Payment): boolean => {
+    const status = payment.status?.toLowerCase();
+
+    return (
+      status === "paid" ||
+      status === "completed" ||
+      status === "succeeded"
+    );
+  };
+
+  const getStatusLabel = (payment: Payment): string => {
+    const approval = getApprovalStatus(payment);
+    const refund = getRefundStatus(payment);
+
+    if (refund === "pending") {
+      return "Refund Processing";
+    }
+
+    if (refund === "failed") {
+      return "Refund Failed";
+    }
+
+    if (refund === "succeeded") {
+      return "Refunded";
+    }
+
+    if (approval === "approved") {
+      return "Approved · PRO Active";
+    }
+
+    if (approval === "rejected") {
+      return "Rejected";
+    }
+
+    if (isPaid(payment)) {
+      return "Paid · Pending Approval";
+    }
+
+    return payment.status || "Pending";
+  };
+
+  const getUserName = (payment: Payment): string => {
+    return (
+      payment.student?.name ||
+      payment.user?.name ||
+      "User"
+    );
+  };
+
+  const getUserEmail = (payment: Payment): string => {
+    return (
+      payment.student?.email ||
+      payment.user?.email ||
+      "No email available"
+    );
+  };
+
+  const formatAmount = (payment: Payment): string => {
+    const currency = payment.currency?.toUpperCase() || "BDT";
+    const amount = Number(payment.amount || 0);
+
+    try {
+      return new Intl.NumberFormat("en-BD", {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 2,
+      }).format(amount);
+    } catch {
+      return `${currency} ${amount.toLocaleString("en-BD")}`;
+    }
+  };
+
+  const statusStyle = (payment: Payment): string => {
+    const approval = getApprovalStatus(payment);
+    const refund = getRefundStatus(payment);
+
+    if (refund === "failed") {
+      return "border-red-200 bg-red-50 text-red-700";
+    }
+
+    if (refund === "pending") {
+      return "border-amber-200 bg-amber-50 text-amber-800";
+    }
+
+    if (refund === "succeeded") {
+      return "border-slate-200 bg-slate-100 text-slate-700";
+    }
+
+    if (approval === "approved") {
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    }
+
+    if (approval === "rejected") {
+      return "border-red-200 bg-red-50 text-red-700";
+    }
+
+    if (isPaid(payment)) {
+      return "border-amber-200 bg-amber-50 text-amber-800";
+    }
+
+    return "border-slate-200 bg-slate-100 text-slate-600";
+  };
+
+  // Approve payment and activate PRO through the backend.
+  const handleApprove = async (paymentId: string): Promise<void> => {
     if (processingId) return;
 
     const confirmed = window.confirm(
-      "Approve this payment? The user's PRO subscription will be activated."
+      "Approve this payment?\n\nThe user's PRO subscription will be activated after approval."
     );
 
     if (!confirmed) return;
@@ -182,7 +302,7 @@ export default function AdminPaymentsPage() {
 
     try {
       await axiosInstance.post(
-        `/api/admin/payments/${paymentId}/approve`
+        `/api/payments/admin/${paymentId}/approve`
       );
 
       toast.success(
@@ -191,10 +311,7 @@ export default function AdminPaymentsPage() {
 
       await fetchPayments();
     } catch (error: unknown) {
-      console.error(
-        "Payment approval error:",
-        error
-      );
+      console.error("Payment approval error:", error);
 
       toast.error(
         getErrorMessage(
@@ -202,17 +319,15 @@ export default function AdminPaymentsPage() {
           "Unable to approve payment."
         )
       );
+
+      await fetchPayments();
     } finally {
       setProcessingId(null);
     }
   };
 
-  /*
-   * Reject payment, cancel Stripe subscription and refund.
-   */
-  const handleReject = async (
-    paymentId: string
-  ): Promise<void> => {
+  // Reject payment, cancel Stripe subscription and refund.
+  const handleReject = async (paymentId: string): Promise<void> => {
     if (processingId) return;
 
     const confirmed = window.confirm(
@@ -225,25 +340,29 @@ export default function AdminPaymentsPage() {
 
     try {
       const response = await axiosInstance.post(
-        `/api/admin/payments/${paymentId}/reject`
+        `/api/payments/admin/${paymentId}/reject`
       );
 
-      if (
+      const refundFailed =
         response.data?.success === false ||
-        response.data?.refundStatus === "failed"
-      ) {
+        response.data?.refundStatus === "failed";
+
+      if (refundFailed) {
         toast.error(
           response.data?.message ||
-            "Refund failed. Payment has not been marked as refunded."
+            "Refund failed. Please check the payment record."
         );
-
-        await fetchPayments();
-        return;
+      } else if (
+        response.data?.refundStatus === "pending"
+      ) {
+        toast.success(
+          "Payment rejected. Refund is being processed."
+        );
+      } else {
+        toast.success(
+          "Payment rejected and refund processed successfully."
+        );
       }
-
-      toast.success(
-        "Payment rejected and refund processed successfully."
-      );
 
       await fetchPayments();
     } catch (error: unknown) {
@@ -265,69 +384,14 @@ export default function AdminPaymentsPage() {
     }
   };
 
-  const getApprovalStatus = (
-    payment: Payment
-  ): string => {
-    return (
-      payment.approvalStatus?.toLowerCase() ||
-      "pending"
-    );
-  };
-
-  const isPaid = (payment: Payment): boolean => {
-    const status = payment.status?.toLowerCase();
-
-    return (
-      status === "paid" ||
-      status === "completed"
-    );
-  };
-
-  const getStatusLabel = (
-    payment: Payment
-  ): string => {
-    const approval = getApprovalStatus(payment);
-
-    if (payment.refundStatus === "failed") {
-      return "Refund Failed";
-    }
-
-    if (payment.refundStatus === "succeeded") {
-      return "Refunded";
-    }
-
-    if (approval === "approved") {
-      return "Approved · PRO Active";
-    }
-
-    if (approval === "rejected") {
-      return "Rejected";
-    }
-
-    if (isPaid(payment)) {
-      return "Paid · Pending Approval";
-    }
-
-    return payment.status || "Pending";
-  };
-
   const filteredPayments = useMemo(() => {
     return payments.filter((payment) => {
-      const name =
-        payment.student?.name ||
-        payment.user?.name ||
-        "";
-
-      const email =
-        payment.student?.email ||
-        payment.user?.email ||
-        "";
-
       const searchableText = [
-        name,
-        email,
+        getUserName(payment),
+        getUserEmail(payment),
         payment.status,
         payment.approvalStatus,
+        payment.refundStatus,
         payment.transactionId,
         payment.method,
         payment.planName,
@@ -338,13 +402,11 @@ export default function AdminPaymentsPage() {
         .join(" ")
         .toLowerCase();
 
-      const matchesSearch =
-        searchableText.includes(
-          search.toLowerCase().trim()
-        );
+      const matchesSearch = searchableText.includes(
+        search.toLowerCase().trim()
+      );
 
-      const approval =
-        getApprovalStatus(payment);
+      const approval = getApprovalStatus(payment);
 
       const matchesFilter =
         filter === "all" ||
@@ -356,17 +418,15 @@ export default function AdminPaymentsPage() {
         (filter === "rejected" &&
           approval === "rejected");
 
-      return (
-        matchesSearch &&
-        matchesFilter
-      );
+      return matchesSearch && matchesFilter;
     });
   }, [payments, search, filter]);
 
   const pendingPayments = payments.filter(
     (payment) =>
       isPaid(payment) &&
-      getApprovalStatus(payment) === "pending"
+      getApprovalStatus(payment) === "pending" &&
+      !getRefundStatus(payment)
   );
 
   const approvedPayments = payments.filter(
@@ -377,61 +437,13 @@ export default function AdminPaymentsPage() {
   const total = payments
     .filter((payment) => isPaid(payment))
     .reduce(
-      (sum, payment) =>
-        sum + Number(payment.amount || 0),
+      (sum, payment) => sum + Number(payment.amount || 0),
       0
     );
-
-  const formatAmount = (
-    payment: Payment
-  ): string => {
-    const currency =
-      payment.currency?.toUpperCase() || "BDT";
-
-    return new Intl.NumberFormat("en-BD", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 2,
-    }).format(
-      Number(payment.amount || 0)
-    );
-  };
-
-  const statusStyle = (
-    payment: Payment
-  ): string => {
-    if (payment.refundStatus === "failed") {
-      return "border-red-200 bg-red-50 text-red-700";
-    }
-
-    if (
-      payment.refundStatus === "succeeded"
-    ) {
-      return "border-slate-200 bg-slate-100 text-slate-700";
-    }
-
-    const approval =
-      getApprovalStatus(payment);
-
-    if (approval === "approved") {
-      return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    }
-
-    if (approval === "rejected") {
-      return "border-red-200 bg-red-50 text-red-700";
-    }
-
-    if (isPaid(payment)) {
-      return "border-amber-200 bg-amber-50 text-amber-800";
-    }
-
-    return "border-slate-200 bg-slate-100 text-slate-600";
-  };
 
   return (
     <div className="min-h-screen bg-[#F5F6F8] px-4 py-7 sm:px-6 lg:px-9">
       <div className="mx-auto max-w-7xl">
-
         {/* Header */}
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -451,20 +463,13 @@ export default function AdminPaymentsPage() {
           <button
             type="button"
             onClick={() => void handleRefresh()}
-            disabled={
-              loading || !!processingId
-            }
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 transition hover:border-[#B58A39] hover:bg-amber-50 disabled:opacity-50"
+            disabled={loading || !!processingId}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 text-sm font-extrabold text-slate-700 transition hover:border-[#B58A39] hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw
               size={16}
-              className={
-                loading
-                  ? "animate-spin"
-                  : ""
-              }
+              className={loading ? "animate-spin" : ""}
             />
-
             Refresh
           </button>
         </div>
@@ -474,39 +479,29 @@ export default function AdminPaymentsPage() {
           <StatCard
             label="Total Transactions"
             value={payments.length}
-            icon={
-              <CreditCard size={19} />
-            }
+            icon={<CreditCard size={19} />}
           />
 
           <StatCard
             label="Pending Approval"
-            value={
-              pendingPayments.length
-            }
+            value={pendingPayments.length}
             icon={<Clock3 size={19} />}
           />
 
           <StatCard
             label="Approved Payments"
-            value={
-              approvedPayments.length
-            }
-            icon={
-              <ShieldCheck size={19} />
-            }
+            value={approvedPayments.length}
+            icon={<ShieldCheck size={19} />}
           />
 
           <StatCard
             label="Recorded Paid Amount"
-            value={`৳${total.toLocaleString(
-              "en-BD"
-            )}`}
+            value={`৳${total.toLocaleString("en-BD")}`}
             icon={<Wallet size={19} />}
           />
         </div>
 
-        {/* Search and filter */}
+        {/* Search and filters */}
         <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full lg:max-w-md">
             <Search
@@ -517,11 +512,7 @@ export default function AdminPaymentsPage() {
             <input
               type="search"
               value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value
-                )
-              }
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Search user, transaction or plan..."
               className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-800 outline-none focus:border-[#B58A39] focus:ring-4 focus:ring-[#D6B36C]/15"
             />
@@ -531,34 +522,24 @@ export default function AdminPaymentsPage() {
             {(
               [
                 ["all", "All Payments"],
-                [
-                  "pending",
-                  "Pending Approval",
-                ],
+                ["pending", "Pending Approval"],
                 ["approved", "Approved"],
                 ["rejected", "Rejected"],
-              ] as [
-                FilterType,
-                string
-              ][]
-            ).map(
-              ([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() =>
-                    setFilter(value)
-                  }
-                  className={`rounded-xl px-3 py-2.5 text-xs font-extrabold transition ${
-                    filter === value
-                      ? "bg-[#101F32] text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  {label}
-                </button>
-              )
-            )}
+              ] as [FilterType, string][]
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilter(value)}
+                className={`rounded-xl px-3 py-2.5 text-xs font-extrabold transition ${
+                  filter === value
+                    ? "bg-[#101F32] text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -566,8 +547,7 @@ export default function AdminPaymentsPage() {
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="font-extrabold text-[#101F32]">
-              Payment Records (
-              {filteredPayments.length})
+              Payment Records ({filteredPayments.length})
             </h2>
           </div>
 
@@ -577,11 +557,9 @@ export default function AdminPaymentsPage() {
                 size={22}
                 className="animate-spin text-[#B58A39]"
               />
-
               Loading payments...
             </div>
-          ) : filteredPayments.length ===
-            0 ? (
+          ) : filteredPayments.length === 0 ? (
             <div className="px-5 py-16 text-center">
               <Wallet
                 size={34}
@@ -598,200 +576,154 @@ export default function AdminPaymentsPage() {
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {filteredPayments.map(
-                (payment) => {
-                  const approval =
-                    getApprovalStatus(
-                      payment
-                    );
+              {filteredPayments.map((payment) => {
+                const approval = getApprovalStatus(payment);
+                const refund = getRefundStatus(payment);
+                const isProcessing = processingId === payment._id;
 
-                  const isProcessing =
-                    processingId ===
-                    payment._id;
+                const canTakeAction =
+                  isPaid(payment) &&
+                  approval === "pending" &&
+                  !refund;
 
-                  const canApprove =
-                    isPaid(payment) &&
-                    approval ===
-                      "pending" &&
-                    !payment.refundStatus;
+                return (
+                  <div
+                    key={payment._id}
+                    className="flex flex-col gap-4 p-5 transition hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between"
+                  >
+                    {/* User and transaction details */}
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-extrabold text-[#101F32]">
+                        {getUserName(payment)}
+                      </h3>
 
-                  const canReject =
-                    isPaid(payment) &&
-                    approval ===
-                      "pending" &&
-                    !payment.refundStatus;
+                      <p className="mt-1 text-sm text-slate-500">
+                        {getUserEmail(payment)}
+                      </p>
 
-                  return (
-                    <div
-                      key={payment._id}
-                      className="flex flex-col gap-4 p-5 transition hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-extrabold text-[#101F32]">
-                          {payment.student
-                            ?.name ||
-                            payment.user
-                              ?.name ||
-                            "User"}
-                        </h3>
+                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-400">
+                        {payment.userRole && (
+                          <span>Role: {payment.userRole}</span>
+                        )}
 
-                        <p className="mt-1 text-sm text-slate-500">
-                          {payment.student
-                            ?.email ||
-                            payment.user
-                              ?.email ||
-                            "No email available"}
-                        </p>
+                        {payment.planName && (
+                          <span>Plan: {payment.planName}</span>
+                        )}
 
-                        <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-400">
-                          {payment.userRole && (
-                            <span>
-                              Role:{" "}
-                              {
-                                payment.userRole
-                              }
-                            </span>
-                          )}
-
-                          {payment.planName && (
-                            <span>
-                              Plan:{" "}
-                              {
-                                payment.planName
-                              }
-                            </span>
-                          )}
-
-                          {payment.method && (
-                            <span>
-                              Method:{" "}
-                              {
-                                payment.method
-                              }
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="mt-2 break-all text-xs text-slate-400">
-                          Transaction:{" "}
-                          {payment.transactionId ||
-                            payment._id}
-                        </p>
-
-                        {payment.createdAt && (
-                          <p className="mt-1 text-xs text-slate-400">
-                            Date:{" "}
-                            {new Date(
-                              payment.createdAt
-                            ).toLocaleDateString(
-                              "en-GB"
-                            )}
-                          </p>
+                        {payment.method && (
+                          <span>Method: {payment.method}</span>
                         )}
                       </div>
 
-                      <div className="flex flex-col gap-3 lg:items-end">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="text-lg font-extrabold text-[#101F32]">
-                            {formatAmount(
-                              payment
-                            )}
-                          </span>
+                      <p className="mt-2 break-all text-xs text-slate-400">
+                        Transaction: {payment.transactionId || payment._id}
+                      </p>
 
-                          <span
-                            className={`rounded-full border px-3 py-1.5 text-xs font-extrabold ${statusStyle(
-                              payment
-                            )}`}
-                          >
-                            {getStatusLabel(
-                              payment
-                            )}
-                          </span>
-                        </div>
-
-                        {payment.refundStatus ===
-                          "failed" && (
-                          <p className="text-xs font-bold text-red-600">
-                            <XCircle
-                              size={13}
-                              className="mr-1 inline"
-                            />
-
-                            Refund requires attention
-                          </p>
-                        )}
-
-                        {canApprove ||
-                        canReject ? (
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              disabled={
-                                !!processingId
-                              }
-                              onClick={() =>
-                                void handleApprove(
-                                  payment._id
-                                )
-                              }
-                              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-emerald-700 disabled:opacity-50"
-                            >
-                              {isProcessing ? (
-                                <Loader2
-                                  size={14}
-                                  className="animate-spin"
-                                />
-                              ) : (
-                                <CheckCircle2
-                                  size={14}
-                                />
-                              )}
-
-                              Approve & Activate PRO
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={
-                                !!processingId
-                              }
-                              onClick={() =>
-                                void handleReject(
-                                  payment._id
-                                )
-                              }
-                              className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-4 py-2.5 text-xs font-extrabold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
-                            >
-                              <RotateCcw
-                                size={14}
-                              />
-
-                              Reject & Refund
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs font-semibold text-slate-400">
-                            <CheckCircle2
-                              size={13}
-                              className="mr-1 inline"
-                            />
-
-                            No action available
-                          </span>
-                        )}
-                      </div>
+                      {payment.createdAt && (
+                        <p className="mt-1 text-xs text-slate-400">
+                          Date:{" "}
+                          {new Date(payment.createdAt).toLocaleDateString(
+                            "en-GB"
+                          )}
+                        </p>
+                      )}
                     </div>
-                  );
-                }
-              )}
+
+                    {/* Amount, status and actions */}
+                    <div className="flex flex-col gap-3 lg:items-end">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-lg font-extrabold text-[#101F32]">
+                          {formatAmount(payment)}
+                        </span>
+
+                        <span
+                          className={`rounded-full border px-3 py-1.5 text-xs font-extrabold ${statusStyle(
+                            payment
+                          )}`}
+                        >
+                          {getStatusLabel(payment)}
+                        </span>
+                      </div>
+
+                      {refund === "failed" && (
+                        <p className="text-xs font-bold text-red-600">
+                          <XCircle
+                            size={13}
+                            className="mr-1 inline"
+                          />
+                          Refund requires attention
+                        </p>
+                      )}
+
+                      {refund === "pending" && (
+                        <p className="text-xs font-bold text-amber-700">
+                          <Clock3
+                            size={13}
+                            className="mr-1 inline"
+                          />
+                          Waiting for refund confirmation
+                        </p>
+                      )}
+
+                      {canTakeAction ? (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={!!processingId}
+                            onClick={() =>
+                              void handleApprove(payment._id)
+                            }
+                            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isProcessing ? (
+                              <Loader2
+                                size={14}
+                                className="animate-spin"
+                              />
+                            ) : (
+                              <CheckCircle2 size={14} />
+                            )}
+                            Approve & Activate PRO
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={!!processingId}
+                            onClick={() =>
+                              void handleReject(payment._id)
+                            }
+                            className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-4 py-2.5 text-xs font-extrabold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isProcessing ? (
+                              <Loader2
+                                size={14}
+                                className="animate-spin"
+                              />
+                            ) : (
+                              <RotateCcw size={14} />
+                            )}
+                            Reject & Refund
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-400">
+                          <CheckCircle2
+                            size={13}
+                            className="mr-1 inline"
+                          />
+                          No action available
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
         <footer className="mt-6 border-t border-slate-200 pt-5 text-center text-xs text-slate-400">
-          ©{" "}
-          {new Date().getFullYear()}{" "}
-          MentorLagbe · Secure Payment Administration
+          © {new Date().getFullYear()} MentorLagbe · Secure Payment Administration
         </footer>
       </div>
     </div>
@@ -805,7 +737,7 @@ function StatCard({
 }: {
   label: string;
   value: string | number;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
