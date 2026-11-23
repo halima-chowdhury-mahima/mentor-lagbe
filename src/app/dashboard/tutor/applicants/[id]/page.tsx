@@ -30,25 +30,36 @@ const API_URL = (
 type Applicant = {
   _id?: string;
   id?: string;
+
+  // Student contact information
+  studentName?: string;
+  studentEmail?: string;
+  studentPhone?: string;
+
+  // Legacy / alternative field names
   name?: string;
   email?: string;
   phone?: string;
   contactNumber?: string;
+
   qualification?: string;
   experience?: string;
   message?: string;
   coverLetter?: string;
   status?: string;
+
   applicant?: {
     name?: string;
     email?: string;
     phone?: string;
   };
+
   student?: {
     name?: string;
     email?: string;
     phone?: string;
   };
+
   user?: {
     name?: string;
     email?: string;
@@ -68,7 +79,10 @@ function isApplicant(value: unknown): value is Applicant {
 }
 
 function getApplicants(result: unknown): Applicant[] {
-  if (Array.isArray(result)) return result.filter(isApplicant);
+  if (Array.isArray(result)) {
+    return result.filter(isApplicant);
+  }
+
   if (!isRecord(result)) return [];
 
   if (Array.isArray(result.applicants)) {
@@ -102,13 +116,21 @@ async function readResponse(response: Response): Promise<unknown> {
 
 function getMessage(result: unknown, fallback: string): string {
   if (!isRecord(result)) return fallback;
-  if (typeof result.message === "string") return result.message;
-  if (typeof result.error === "string") return result.error;
+
+  if (typeof result.message === "string") {
+    return result.message;
+  }
+
+  if (typeof result.error === "string") {
+    return result.error;
+  }
+
   return fallback;
 }
 
 function getApplicantName(applicant: Applicant): string {
   return (
+    applicant.studentName ||
     applicant.name ||
     applicant.applicant?.name ||
     applicant.student?.name ||
@@ -119,6 +141,7 @@ function getApplicantName(applicant: Applicant): string {
 
 function getApplicantEmail(applicant: Applicant): string {
   return (
+    applicant.studentEmail ||
     applicant.email ||
     applicant.applicant?.email ||
     applicant.student?.email ||
@@ -129,6 +152,7 @@ function getApplicantEmail(applicant: Applicant): string {
 
 function getApplicantPhone(applicant: Applicant): string {
   return (
+    applicant.studentPhone ||
     applicant.phone ||
     applicant.contactNumber ||
     applicant.applicant?.phone ||
@@ -244,7 +268,10 @@ export default function ApplicantsPage() {
       setApplicants((previous) =>
         previous.map((applicant) => {
           const id = applicant._id || applicant.id;
-          return id === applicationId ? { ...applicant, status } : applicant;
+
+          return id === applicationId
+            ? { ...applicant, status }
+            : applicant;
         })
       );
 
@@ -315,6 +342,7 @@ export default function ApplicantsPage() {
               <div className="rounded-xl bg-amber-400/15 p-3 text-amber-300">
                 <Users size={23} />
               </div>
+
               <div>
                 <p className="text-2xl font-extrabold">
                   {applicants.length}
@@ -330,6 +358,7 @@ export default function ApplicantsPage() {
             <h2 className="text-xl font-bold text-slate-900">
               All Applications
             </h2>
+
             <p className="mt-1 text-sm text-slate-500">
               Review each applicant&apos;s profile and application details.
             </p>
@@ -414,6 +443,7 @@ export default function ApplicantsPage() {
                         <h3 className="text-lg font-bold text-slate-900">
                           {name}
                         </h3>
+
                         <p className="mt-1 text-xs text-slate-500">
                           Applicant #{index + 1}
                         </p>
@@ -434,47 +464,49 @@ export default function ApplicantsPage() {
                   </div>
 
                   <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-6">
-                    {email && (
-                      <div className="flex items-start gap-3">
-                        <div className="rounded-xl bg-slate-100 p-2.5 text-slate-600">
-                          <Mail size={18} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-slate-400">
-                            Email Address
-                          </p>
-                          <p className="mt-1 break-all text-sm font-medium text-slate-800">
-                            {email}
-                          </p>
-                        </div>
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-xl bg-slate-100 p-2.5 text-slate-600">
+                        <Mail size={18} />
                       </div>
-                    )}
 
-                    {phone && (
-                      <div className="flex items-start gap-3">
-                        <div className="rounded-xl bg-slate-100 p-2.5 text-slate-600">
-                          <Phone size={18} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-slate-400">
-                            Phone Number
-                          </p>
-                          <p className="mt-1 text-sm font-medium text-slate-800">
-                            {phone}
-                          </p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-400">
+                          Email Address
+                        </p>
+
+                        <p className="mt-1 break-all text-sm font-medium text-slate-800">
+                          {email || "Not provided"}
+                        </p>
                       </div>
-                    )}
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-xl bg-slate-100 p-2.5 text-slate-600">
+                        <Phone size={18} />
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-semibold text-slate-400">
+                          Phone Number
+                        </p>
+
+                        <p className="mt-1 text-sm font-medium text-slate-800">
+                          {phone || "Not provided"}
+                        </p>
+                      </div>
+                    </div>
 
                     {applicant.qualification && (
                       <div className="flex items-start gap-3">
                         <div className="rounded-xl bg-slate-100 p-2.5 text-slate-600">
                           <GraduationCap size={18} />
                         </div>
+
                         <div>
                           <p className="text-xs font-semibold text-slate-400">
                             Qualification
                           </p>
+
                           <p className="mt-1 text-sm font-medium text-slate-800">
                             {applicant.qualification}
                           </p>
@@ -487,10 +519,12 @@ export default function ApplicantsPage() {
                         <div className="rounded-xl bg-slate-100 p-2.5 text-slate-600">
                           <BriefcaseBusiness size={18} />
                         </div>
+
                         <div>
                           <p className="text-xs font-semibold text-slate-400">
                             Experience
                           </p>
+
                           <p className="mt-1 text-sm font-medium text-slate-800">
                             {applicant.experience}
                           </p>
@@ -503,6 +537,7 @@ export default function ApplicantsPage() {
                     <div className="mx-5 mb-5 rounded-2xl bg-slate-50 p-4 sm:mx-6">
                       <div className="mb-2 flex items-center gap-2 text-slate-600">
                         <MessageSquare size={16} />
+
                         <p className="text-xs font-bold uppercase tracking-wide">
                           Applicant Message
                         </p>
