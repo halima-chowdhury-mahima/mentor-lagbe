@@ -822,7 +822,7 @@ export default function TuitionDetailsPage() {
               <>
                 <Link
                   href="/login"
-                  className="mt-6 block rounded-xl bg-[#101F32] px-5 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#1c3552]"
+                  className="mt-6 block rounded-xl bg-[#8c8c20] px-5 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#1c3552]"
                 >
                   Sign In to Apply
                 </Link>

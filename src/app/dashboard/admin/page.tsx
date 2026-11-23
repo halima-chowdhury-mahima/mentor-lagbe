@@ -1,5 +1,6 @@
 
 "use client";
+
 import toast from "react-hot-toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -91,6 +92,7 @@ type Payment = {
   stripePaymentIntentId?: string;
   paymentStatus?: string;
   status?: string;
+  approvalStatus?: string;
   subscriptionStatus?: string;
   refundStatus?: string;
   stripeRefundId?: string;
@@ -106,6 +108,7 @@ type ApiResponse<T> = {
   success?: boolean;
   total?: number;
   data?: T[];
+  payments?: T[];
   message?: string;
 };
 
@@ -162,13 +165,26 @@ const getStatusStyle = (status?: string) => {
   const value = normalizeStatus(status);
 
   if (
-    ["approved", "accepted", "completed", "paid", "success"].includes(value)
+    [
+      "approved",
+      "accepted",
+      "completed",
+      "paid",
+      "success",
+      "succeeded",
+      "refunded",
+    ].includes(value)
   ) {
     return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
   }
 
   if (
-    ["rejected", "cancelled", "canceled", "failed"].includes(value)
+    [
+      "rejected",
+      "cancelled",
+      "canceled",
+      "failed",
+    ].includes(value)
   ) {
     return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
   }
@@ -188,11 +204,7 @@ const getInitials = (name?: string) => {
 };
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
+  if (typeof error === "object" && error !== null && "response" in error) {
     const response = (
       error as {
         response?: {
@@ -224,11 +236,8 @@ const getPaymentUserName = (payment: Payment) =>
 const getPaymentEmail = (payment: Payment) =>
   payment.userEmail || payment.email || "—";
 
-const getPaymentCurrency = (payment: Payment) => {
-  const currency = (payment.currency || "usd").toUpperCase();
-
-  return currency === "BDT" ? "BDT" : currency;
-};
+const getPaymentCurrency = (payment: Payment) =>
+  (payment.currency || "USD").toUpperCase();
 
 const formatPaymentAmount = (
   amount?: number,
@@ -237,21 +246,25 @@ const formatPaymentAmount = (
   const value = Number(amount ?? 0);
   const code = (currency || "USD").toUpperCase();
 
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: code,
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).format(Number.isFinite(value) ? value : 0);
+  } catch {
+    return `${code} ${value.toFixed(2)}`;
+  }
 };
 
 const getRefundLabel = (status?: string) => {
-  const value = (status || "not_refunded").toLowerCase();
+  const value = normalizeStatus(status || "not_refunded");
 
-  if (value === "succeeded" || value === "refunded") {
+  if (["succeeded", "refunded"].includes(value)) {
     return "Refunded";
   }
 
-  if (value === "pending" || value === "processing") {
+  if (["pending", "processing"].includes(value)) {
     return "Refund Pending";
   }
 
@@ -276,13 +289,17 @@ function StatCard({
     <div className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[#D9B66F] hover:shadow-lg">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="text-sm font-medium text-slate-500">
+            {label}
+          </p>
 
           <h3 className="mt-3 break-words text-2xl font-extrabold tracking-tight text-[#101827] sm:text-3xl">
             {value}
           </h3>
 
-          <p className="mt-2 text-xs text-slate-400">{description}</p>
+          <p className="mt-2 text-xs text-slate-400">
+            {description}
+          </p>
         </div>
 
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#D9B66F]/15 text-[#A77D32] transition group-hover:bg-[#D9B66F]/25">
@@ -296,7 +313,7 @@ function StatCard({
 function StatusBadge({ status }: { status?: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold capitalize ${getStatusStyle(
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold capitalize ${getStatusStyle(
         status
       )}`}
     >
@@ -343,8 +360,13 @@ function EmptyState({
         <ClipboardList size={25} />
       </div>
 
-      <h3 className="mt-4 font-bold text-slate-800">{title}</h3>
-      <p className="mt-1 text-sm text-slate-500">{description}</p>
+      <h3 className="mt-4 font-bold text-slate-800">
+        {title}
+      </h3>
+
+      <p className="mt-1 text-sm text-slate-500">
+        {description}
+      </p>
     </div>
   );
 }
@@ -407,7 +429,10 @@ function TuitionTable({
             const isUpdating = updatingId === `tuition:${tuition._id}`;
 
             return (
-              <tr key={tuition._id} className="transition hover:bg-slate-50/80">
+              <tr
+                key={tuition._id}
+                className="transition hover:bg-slate-50/80"
+              >
                 <td className="px-5 py-4">
                   <p className="max-w-[220px] truncate font-bold text-slate-800">
                     {tuition.title || tuition.subject || "Untitled Tuition"}
@@ -430,6 +455,7 @@ function TuitionTable({
                   <p className="text-sm font-semibold text-slate-700">
                     {tuition.tutor?.name || tuition.tutorName || "Unknown Tutor"}
                   </p>
+
                   <p className="mt-1 text-xs text-slate-400">
                     {tuition.tutor?.email || "—"}
                   </p>
@@ -454,8 +480,10 @@ function TuitionTable({
                         <button
                           type="button"
                           disabled={isUpdating}
-                          onClick={() => onUpdateStatus(tuition._id, "approved")}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() =>
+                            onUpdateStatus(tuition._id, "approved")
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {isUpdating ? (
                             <Loader2 size={14} className="animate-spin" />
@@ -468,7 +496,9 @@ function TuitionTable({
                         <button
                           type="button"
                           disabled={isUpdating}
-                          onClick={() => onUpdateStatus(tuition._id, "rejected")}
+                          onClick={() =>
+                            onUpdateStatus(tuition._id, "rejected")
+                          }
                           className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <XCircle size={14} />
@@ -545,11 +575,15 @@ function ApplicationTable({
               updatingId === `application:${application._id}`;
 
             return (
-              <tr key={application._id} className="hover:bg-slate-50/80">
+              <tr
+                key={application._id}
+                className="hover:bg-slate-50/80"
+              >
                 <td className="px-5 py-4">
                   <p className="font-bold text-slate-800">
                     {application.studentName || "Unknown Student"}
                   </p>
+
                   <p className="mt-1 text-xs text-slate-400">
                     {application.studentEmail || "—"}
                   </p>
@@ -581,7 +615,7 @@ function ApplicationTable({
                           onClick={() =>
                             onUpdateStatus(application._id, "accepted")
                           }
-                          className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
                         >
                           {isUpdating ? "Updating..." : "Accept"}
                         </button>
@@ -645,12 +679,16 @@ function UsersTable({ items }: { items: AdminUser[] }) {
 
         <tbody className="divide-y divide-slate-100">
           {items.map((adminUser) => (
-            <tr key={adminUser._id} className="hover:bg-slate-50/80">
+            <tr
+              key={adminUser._id}
+              className="hover:bg-slate-50/80"
+            >
               <td className="px-5 py-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#101827] text-xs font-bold text-[#E8CA89]">
                     {getInitials(adminUser.name)}
                   </div>
+
                   <span className="font-semibold text-slate-800">
                     {adminUser.name || "Unnamed User"}
                   </span>
@@ -684,11 +722,15 @@ function UsersTable({ items }: { items: AdminUser[] }) {
 
 function PaymentsTable({
   items,
+  approvingId,
   rejectingId,
+  onApprove,
   onReject,
 }: {
   items: Payment[];
+  approvingId: string | null;
   rejectingId: string | null;
+  onApprove: (payment: Payment) => void;
   onReject: (payment: Payment) => void;
 }) {
   if (items.length === 0) {
@@ -702,7 +744,7 @@ function PaymentsTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1250px] text-left">
+      <table className="w-full min-w-[1450px] text-left">
         <thead>
           <tr className="border-b border-slate-100 bg-slate-50">
             {[
@@ -710,11 +752,12 @@ function PaymentsTable({
               "Plan",
               "Amount",
               "Payment",
+              "Approval",
               "Subscription",
               "Refund",
               "Transaction ID",
               "Date",
-              "Action",
+              "Actions",
             ].map((heading) => (
               <th
                 key={heading}
@@ -729,32 +772,50 @@ function PaymentsTable({
         <tbody className="divide-y divide-slate-100">
           {items.map((payment) => {
             const paymentStatus = getPaymentStatus(payment);
-            const refundStatus = (
+            const approvalStatus = normalizeStatus(
+              payment.approvalStatus
+            );
+            const refundStatus = normalizeStatus(
               payment.refundStatus || "not_refunded"
-            ).toLowerCase();
-
-            const isRefunded = [
-              "succeeded",
-              "refunded",
-            ].includes(refundStatus);
-
-            const isRejecting = rejectingId === payment._id;
+            );
 
             const isPaid = [
               "paid",
               "succeeded",
               "success",
               "completed",
-            ].includes(paymentStatus.toLowerCase());
+            ].includes(normalizeStatus(paymentStatus));
 
-            const canRefund =
+            const isRefunded = [
+              "succeeded",
+              "refunded",
+            ].includes(refundStatus);
+
+            const isApproving = approvingId === payment._id;
+            const isRejecting = rejectingId === payment._id;
+            const isProcessing = isApproving || isRejecting;
+
+            const isPendingApproval =
+              approvalStatus === "pending" ||
+              !payment.approvalStatus;
+
+            const hasStripeReference = Boolean(
+              payment.stripePaymentIntentId ||
+              payment.stripeSessionId
+            );
+
+            const canApprove =
               isPaid &&
+              isPendingApproval &&
+              !isRefunded &&
+              Boolean(payment.stripeSubscriptionId);
+
+            const canReject =
+              isPaid &&
+              isPendingApproval &&
               !isRefunded &&
               Boolean(payment.stripeSubscriptionId) &&
-              Boolean(
-                payment.stripePaymentIntentId ||
-                payment.transactionId
-              );
+              hasStripeReference;
 
             return (
               <tr
@@ -808,9 +869,14 @@ function PaymentsTable({
                 <td className="px-5 py-4">
                   <StatusBadge
                     status={
-                      payment.subscriptionStatus ||
-                      (isRefunded ? "canceled" : "active")
+                      payment.approvalStatus || "Pending Approval"
                     }
+                  />
+                </td>
+
+                <td className="px-5 py-4">
+                  <StatusBadge
+                    status={payment.subscriptionStatus || "Unknown"}
                   />
                 </td>
 
@@ -853,29 +919,64 @@ function PaymentsTable({
                 </td>
 
                 <td className="px-5 py-4">
-                  {isRefunded ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+                  {approvalStatus === "approved" ? (
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
                       <CheckCircle2 size={14} />
-                      Refunded
+                      Approved
                     </span>
-                  ) : canRefund ? (
-                    <button
-                      type="button"
-                      disabled={isRejecting}
-                      onClick={() => onReject(payment)}
-                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {isRejecting ? (
-                        <Loader2
-                          size={14}
-                          className="animate-spin"
-                        />
-                      ) : (
-                        <XCircle size={14} />
+                  ) : approvalStatus === "rejected" ? (
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
+                      <XCircle size={14} />
+                      Rejected
+                    </span>
+                  ) : canApprove || canReject ? (
+                    <div className="flex flex-col gap-2">
+                      {canApprove && (
+                        <button
+                          type="button"
+                          disabled={isProcessing}
+                          onClick={() => onApprove(payment)}
+                          className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isApproving ? (
+                            <Loader2
+                              size={14}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <CheckCircle2 size={14} />
+                          )}
+
+                          {isApproving ? "Approving..." : "Approve"}
+                        </button>
                       )}
 
-                      {isRejecting ? "Processing..." : "Reject & Refund"}
-                    </button>
+                      {canReject && (
+                        <button
+                          type="button"
+                          disabled={isProcessing}
+                          onClick={() => onReject(payment)}
+                          className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isRejecting ? (
+                            <Loader2
+                              size={14}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <XCircle size={14} />
+                          )}
+
+                          {isRejecting
+                            ? "Processing..."
+                            : "Reject & Refund"}
+                        </button>
+                      )}
+                    </div>
+                  ) : isRefunded ? (
+                    <span className="text-xs font-semibold text-emerald-700">
+                      Refunded
+                    </span>
                   ) : (
                     <span className="text-xs text-slate-400">
                       Not available
@@ -890,6 +991,7 @@ function PaymentsTable({
     </div>
   );
 }
+
 /* =====================================================
    MAIN ADMIN DASHBOARD
 ===================================================== */
@@ -906,8 +1008,12 @@ export default function AdminDashboardPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+
+  const [approvingPaymentId, setApprovingPaymentId] =
+    useState<string | null>(null);
+
   const [rejectingPaymentId, setRejectingPaymentId] =
-  useState<string | null>(null);
+    useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -963,7 +1069,8 @@ export default function AdminDashboardPage() {
       }
 
       if (results[3].status === "fulfilled") {
-        const data = results[3].value.data?.data;
+        const response = results[3].value.data;
+        const data = response?.data ?? response?.payments;
         setPayments(Array.isArray(data) ? data : []);
       } else {
         failedSections.push("Payments");
@@ -1056,6 +1163,7 @@ export default function AdminDashboardPage() {
 
     return tuitions.filter((tuition) => {
       const status = normalizeStatus(tuition.status);
+
       const matchesFilter =
         tuitionFilter === "all" || status === tuitionFilter;
 
@@ -1109,216 +1217,284 @@ export default function AdminDashboardPage() {
   }, [users, searchTerm]);
 
   const filteredPayments = useMemo(() => {
-  const search = searchTerm.toLowerCase().trim();
+    const search = searchTerm.toLowerCase().trim();
 
-  return payments.filter((payment) =>
-    [
-      payment._id,
-      payment.name,
-      payment.userName,
-      payment.email,
-      payment.userEmail,
-      payment.userRole,
-      payment.plan,
-      payment.planName,
-      payment.status,
-      payment.paymentStatus,
-      payment.subscriptionStatus,
-      payment.refundStatus,
-      payment.transactionId,
-      payment.stripePaymentIntentId,
-      payment.stripeSubscriptionId,
-      payment.stripeRefundId,
-      payment.amount,
-      payment.currency,
-    ]
-      .filter((value) => value !== undefined && value !== null)
-      .some((value) =>
-        String(value).toLowerCase().includes(search)
-      )
-  );
-}, [payments, searchTerm]);
+    return payments.filter((payment) =>
+      [
+        payment._id,
+        payment.name,
+        payment.userName,
+        payment.email,
+        payment.userEmail,
+        payment.userRole,
+        payment.plan,
+        payment.planName,
+        payment.status,
+        payment.paymentStatus,
+        payment.approvalStatus,
+        payment.subscriptionStatus,
+        payment.refundStatus,
+        payment.transactionId,
+        payment.stripePaymentIntentId,
+        payment.stripeSubscriptionId,
+        payment.stripeRefundId,
+        payment.amount,
+        payment.currency,
+      ]
+        .filter((value) => value !== undefined && value !== null)
+        .some((value) =>
+          String(value).toLowerCase().includes(search)
+        )
+    );
+  }, [payments, searchTerm]);
 
   /* UPDATE TUITION */
 
   const updateTuitionStatus = async (
-  tuitionId: string,
-  status: "approved" | "rejected"
-) => {
-  const tuition = tuitions.find((item) => item._id === tuitionId);
+    tuitionId: string,
+    status: "approved" | "rejected"
+  ) => {
+    const tuition = tuitions.find((item) => item._id === tuitionId);
 
-  if (!tuition) {
-    toast.error("Tuition record not found.");
-    return;
-  }
-
-  const action = status === "approved" ? "approve" : "reject";
-
-  const confirmed = window.confirm(
-    `Are you sure you want to ${action} this tuition?`
-  );
-
-  if (!confirmed) return;
-
-  setUpdatingId(`tuition:${tuitionId}`);
-  setError("");
-  setNotice("");
-
-  const toastId = toast.loading(
-    status === "approved"
-      ? "Approving tuition..."
-      : "Rejecting tuition..."
-  );
-
-  try {
-    const response = await axiosInstance.patch(
-      `/api/admin/tuitions/${tuitionId}/status`,
-      { status }
-    );
-
-    if (response.data?.success === false) {
-      throw new Error(
-        response.data?.message || "Unable to update tuition."
-      );
+    if (!tuition) {
+      toast.error("Tuition record not found.");
+      return;
     }
 
-    toast.success(
+    const action = status === "approved" ? "approve" : "reject";
+
+    const confirmed = window.confirm(
+      `Are you sure you want to ${action} this tuition?`
+    );
+
+    if (!confirmed) return;
+
+    setUpdatingId(`tuition:${tuitionId}`);
+    setError("");
+    setNotice("");
+
+    const toastId = toast.loading(
       status === "approved"
-        ? "Tuition approved successfully!"
-        : "Tuition rejected successfully!",
-      { id: toastId }
+        ? "Approving tuition..."
+        : "Rejecting tuition..."
     );
 
-    await loadDashboard(true);
-  } catch (err: unknown) {
-    const message = getApiErrorMessage(
-      err,
-      "Unable to update tuition status."
-    );
-
-    toast.error(message, { id: toastId });
-  } finally {
-    setUpdatingId(null);
-  }
-};
-
-  /* UPDATE APPLICATION */
-
-  /* UPDATE APPLICATION */
-
-const updateApplicationStatus = async (
-  applicationId: string,
-  status: "accepted" | "rejected"
-) => {
-  const application = applications.find(
-    (item) => item._id === applicationId
-  );
-
-  if (!application) {
-    toast.error("Application record not found.");
-    return;
-  }
-
-  const confirmed = window.confirm(
-    `Are you sure you want to ${status} this application?`
-  );
-
-  if (!confirmed) return;
-
-  setUpdatingId(`application:${applicationId}`);
-  setError("");
-  setNotice("");
-
-  const toastId = toast.loading(
-    status === "accepted"
-      ? "Accepting application..."
-      : "Rejecting application..."
-  );
-
-  try {
-    const response = await axiosInstance.patch(
-      `/api/admin/applications/${applicationId}/status`,
-      { status }
-    );
-
-    if (response.data?.success === false) {
-      throw new Error(
-        response.data?.message || "Unable to update application."
+    try {
+      const response = await axiosInstance.patch(
+        `/api/admin/tuitions/${tuitionId}/status`,
+        { status }
       );
+
+      if (response.data?.success === false) {
+        throw new Error(
+          response.data?.message || "Unable to update tuition."
+        );
+      }
+
+      toast.success(
+        status === "approved"
+          ? "Tuition approved successfully!"
+          : "Tuition rejected successfully!",
+        { id: toastId }
+      );
+
+      await loadDashboard(true);
+    } catch (err: unknown) {
+      toast.error(
+        getApiErrorMessage(err, "Unable to update tuition status."),
+        { id: toastId }
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  /* UPDATE APPLICATION */
+
+  const updateApplicationStatus = async (
+    applicationId: string,
+    status: "accepted" | "rejected"
+  ) => {
+    const application = applications.find(
+      (item) => item._id === applicationId
+    );
+
+    if (!application) {
+      toast.error("Application record not found.");
+      return;
     }
 
-    toast.success(
+    const confirmed = window.confirm(
+      `Are you sure you want to ${status} this application?`
+    );
+
+    if (!confirmed) return;
+
+    setUpdatingId(`application:${applicationId}`);
+    setError("");
+    setNotice("");
+
+    const toastId = toast.loading(
       status === "accepted"
-        ? "Application accepted successfully!"
-        : "Application rejected successfully!",
-      { id: toastId }
+        ? "Accepting application..."
+        : "Rejecting application..."
     );
 
-    await loadDashboard(true);
-  } catch (err: unknown) {
-    const message = getApiErrorMessage(
-      err,
-      "Unable to update application status."
-    );
-
-    toast.error(message, { id: toastId });
-  } finally {
-    setUpdatingId(null);
-  }
-};
-
-
-const rejectAndRefundPayment = async (payment: Payment) => {
-  if (!payment._id) {
-    toast.error("Payment ID is missing.");
-    return;
-  }
-
-  const confirmed = window.confirm(
-    `Reject ${getPaymentUserName(payment)}'s ${payment.planName || "Pro"} subscription and refund the initial payment?`
-  );
-
-  if (!confirmed) return;
-
-  setRejectingPaymentId(payment._id);
-
-  const toastId = toast.loading(
-    "Canceling subscription and processing refund..."
-  );
-
-  try {
-    // This endpoint is from the payment.routes.ts version
-    // previously shared in our conversation.
-    const response = await axiosInstance.post(
-      `/api/payments/admin/${payment._id}/reject`
-    );
-
-    if (response.data?.success === false) {
-      throw new Error(
-        response.data?.message ||
-          "Unable to reject and refund this payment."
+    try {
+      const response = await axiosInstance.patch(
+        `/api/admin/applications/${applicationId}/status`,
+        { status }
       );
+
+      if (response.data?.success === false) {
+        throw new Error(
+          response.data?.message || "Unable to update application."
+        );
+      }
+
+      toast.success(
+        status === "accepted"
+          ? "Application accepted successfully!"
+          : "Application rejected successfully!",
+        { id: toastId }
+      );
+
+      await loadDashboard(true);
+    } catch (err: unknown) {
+      toast.error(
+        getApiErrorMessage(err, "Unable to update application status."),
+        { id: toastId }
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  /* APPROVE PAYMENT */
+
+  const approvePayment = async (payment: Payment) => {
+    if (!payment._id) {
+      toast.error("Payment ID is missing.");
+      return;
     }
 
-    toast.success(
-      response.data?.message ||
-        "Subscription cancellation and refund request completed.",
-      { id: toastId }
+    if (
+      normalizeStatus(payment.approvalStatus) === "approved" ||
+      normalizeStatus(payment.approvalStatus) === "rejected"
+    ) {
+      toast.error("This payment has already been reviewed.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Approve ${getPaymentUserName(payment)}'s ${
+        payment.planName || "Pro"
+      } subscription? The user's Pro access will be activated after approval.`
     );
 
-    await loadDashboard(true);
-  } catch (error: unknown) {
-    toast.error(
-      getApiErrorMessage(
-        error,
-        "Unable to process the refund. Please check the payment record."
-      ),
-      { id: toastId }
+    if (!confirmed) return;
+
+    setApprovingPaymentId(payment._id);
+
+    const toastId = toast.loading("Approving Pro subscription...");
+
+    try {
+      const response = await axiosInstance.post(
+        `/api/payments/admin/${payment._id}/approve`
+      );
+
+      if (response.data?.success === false) {
+        throw new Error(
+          response.data?.message || "Unable to approve payment."
+        );
+      }
+
+      toast.success(
+        response.data?.message ||
+          "Payment approved! Pro subscription activated.",
+        { id: toastId }
+      );
+
+      await loadDashboard(true);
+    } catch (error: unknown) {
+      toast.error(
+        getApiErrorMessage(
+          error,
+          "Unable to approve this subscription."
+        ),
+        { id: toastId }
+      );
+    } finally {
+      setApprovingPaymentId(null);
+    }
+  };
+
+  /* REJECT AND REFUND PAYMENT */
+
+  const rejectAndRefundPayment = async (payment: Payment) => {
+    if (!payment._id) {
+      toast.error("Payment ID is missing.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Reject ${getPaymentUserName(payment)}'s ${
+        payment.planName || "Pro"
+      } subscription, cancel the Stripe subscription and refund the initial payment?`
     );
-  } finally {
-    setRejectingPaymentId(null);
-  }
-};
+
+    if (!confirmed) return;
+
+    setRejectingPaymentId(payment._id);
+
+    const toastId = toast.loading(
+      "Canceling subscription and processing refund..."
+    );
+
+    try {
+      const response = await axiosInstance.post(
+        `/api/payments/admin/${payment._id}/reject`
+      );
+
+      if (response.data?.success === false) {
+        throw new Error(
+          response.data?.message ||
+            "Unable to reject and refund this payment."
+        );
+      }
+
+      const refundStatus = normalizeStatus(
+        response.data?.refundStatus
+      );
+
+      if (refundStatus === "failed") {
+        throw new Error(
+          response.data?.message ||
+            "Subscription rejected, but the refund failed. Please check Stripe."
+        );
+      }
+
+      toast.success(
+        response.data?.message ||
+          (refundStatus === "succeeded"
+            ? "Subscription rejected and initial payment refunded successfully."
+            : "Subscription rejected. Refund is being processed."),
+        { id: toastId }
+      );
+
+      await loadDashboard(true);
+    } catch (error: unknown) {
+      toast.error(
+        getApiErrorMessage(
+          error,
+          "Unable to process the refund. Please check the payment record."
+        ),
+        { id: toastId }
+      );
+    } finally {
+      setRejectingPaymentId(null);
+    }
+  };
 
   /* NAVIGATION */
 
@@ -1444,7 +1620,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                   Mentor<span className="text-[#D6B36C]">Lagbe</span>
                 </p>
 
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-300">
                   Admin workspace
                 </p>
               </div>
@@ -1453,7 +1629,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
-              className="rounded-lg p-2 text-slate-400 hover:bg-white/10 lg:hidden"
+              className="rounded-lg p-2 text-slate-300 hover:bg-white/10 lg:hidden"
               aria-label="Close menu"
             >
               <X size={19} />
@@ -1461,7 +1637,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 pt-8">
-            <p className="px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+            <p className="px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">
               Main menu
             </p>
 
@@ -1478,7 +1654,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
                       active
                         ? "bg-[#D6B36C] text-[#152137] shadow-lg"
-                        : "text-slate-400 hover:bg-white/5 hover:text-white"
+                        : "text-slate-200 hover:bg-white/10 hover:text-white"
                     }`}
                   >
                     <Icon size={18} />
@@ -1490,7 +1666,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                           className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${
                             active
                               ? "bg-[#101827] text-[#E8CA89]"
-                              : "bg-amber-400/15 text-amber-300"
+                              : "bg-amber-400/20 text-amber-200"
                           }`}
                         >
                           {pendingTuitions.length}
@@ -1503,7 +1679,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                           className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${
                             active
                               ? "bg-[#101827] text-[#E8CA89]"
-                              : "bg-amber-400/15 text-amber-300"
+                              : "bg-amber-400/20 text-amber-200"
                           }`}
                         >
                           {pendingApplications.length}
@@ -1514,10 +1690,8 @@ const rejectAndRefundPayment = async (payment: Payment) => {
               })}
             </nav>
 
-            {/* DEDICATED MANAGEMENT PAGE LINKS */}
-
             <div className="my-6 border-t border-white/10 pt-5">
-              <p className="px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+              <p className="px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300">
                 Dedicated Management Pages
               </p>
 
@@ -1530,7 +1704,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                       key={item.href}
                       href={item.href}
                       onClick={() => setMobileMenuOpen(false)}
-                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-400 transition hover:bg-white/5 hover:text-[#E8CA89]"
+                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 hover:text-[#E8CA89]"
                     >
                       <Icon size={18} />
                       <span>{item.label}</span>
@@ -1553,12 +1727,14 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                   <p className="truncate text-sm font-semibold text-white">
                     {user?.name || "Administrator"}
                   </p>
-                  <p className="text-xs text-[#D6B36C]">Administrator</p>
+                  <p className="text-xs text-[#E8CA89]">
+                    Administrator
+                  </p>
                 </div>
               </div>
             </div>
 
-            <p className="mt-5 text-center text-[10px] text-slate-600">
+            <p className="mt-5 text-center text-[10px] text-slate-300">
               © {new Date().getFullYear()} MentorLagbe
             </p>
           </div>
@@ -1609,26 +1785,31 @@ const rejectAndRefundPayment = async (payment: Payment) => {
               <button
                 type="button"
                 onClick={async () => {
-  const toastId = toast.loading("Refreshing dashboard...");
+                  const toastId = toast.loading(
+                    "Refreshing dashboard..."
+                  );
 
-  try {
-    await loadDashboard(true);
-    toast.success("Dashboard refreshed successfully!", {
-      id: toastId,
-    });
-  } catch {
-    toast.error("Unable to refresh dashboard.", {
-      id: toastId,
-    });
-  }
-}}
+                  try {
+                    await loadDashboard(true);
+
+                    toast.success(
+                      "Dashboard refreshed successfully!",
+                      { id: toastId }
+                    );
+                  } catch {
+                    toast.error("Unable to refresh dashboard.", {
+                      id: toastId,
+                    });
+                  }
+                }}
                 disabled={refreshing}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-600 shadow-sm transition hover:border-[#D6B36C] hover:text-[#8B6A2F] disabled:opacity-50 sm:px-4 sm:text-sm"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition hover:border-[#D6B36C] hover:text-[#8B6A2F] disabled:opacity-50 sm:px-4 sm:text-sm"
               >
                 <RefreshCw
                   size={16}
                   className={refreshing ? "animate-spin" : ""}
                 />
+
                 <span className="hidden sm:inline">
                   {refreshing ? "Refreshing..." : "Refresh"}
                 </span>
@@ -1640,7 +1821,9 @@ const rejectAndRefundPayment = async (payment: Payment) => {
             {error && (
               <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
                 <AlertCircle size={19} className="mt-0.5 shrink-0" />
+
                 <p className="flex-1">{error}</p>
+
                 <button
                   type="button"
                   onClick={() => setError("")}
@@ -1654,7 +1837,9 @@ const rejectAndRefundPayment = async (payment: Payment) => {
             {notice && (
               <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
                 <CheckCircle2 size={19} className="mt-0.5 shrink-0" />
+
                 <p className="flex-1">{notice}</p>
+
                 <button
                   type="button"
                   onClick={() => setNotice("")}
@@ -1671,6 +1856,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
               <>
                 <section className="relative overflow-hidden rounded-3xl bg-[#101827] p-7 text-white shadow-xl sm:p-9">
                   <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full border-[35px] border-[#D6B36C]/10" />
+
                   <div className="pointer-events-none absolute -bottom-28 right-48 h-56 w-56 rounded-full bg-[#D6B36C]/10 blur-3xl" />
 
                   <div className="relative z-10 flex flex-col justify-between gap-7 md:flex-row md:items-center">
@@ -1707,7 +1893,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                       <button
                         type="button"
                         onClick={() => changeTab("applications")}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-[#D6B36C] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#E8CA89]"
+                        className="inline-flex items-center gap-2 rounded-xl border border-[#E8CA89]/50 bg-[#E8CA89] px-5 py-3 text-sm font-bold text-[#101827] transition hover:bg-[#F2DDAA]"
                       >
                         Applications
                         <ChevronRight size={16} />
@@ -1721,6 +1907,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     <h2 className="text-lg font-bold text-[#101827]">
                       Platform overview
                     </h2>
+
                     <p className="mt-1 text-sm text-slate-500">
                       Live information retrieved from your database.
                     </p>
@@ -1733,18 +1920,21 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                       description="Registered platform accounts"
                       icon={Users}
                     />
+
                     <StatCard
                       label="Tuition Listings"
                       value={tuitions.length}
                       description="All submitted tuition posts"
                       icon={BookOpen}
                     />
+
                     <StatCard
                       label="Pending Reviews"
                       value={pendingTuitions.length}
                       description="Waiting for admin approval"
                       icon={Clock3}
                     />
+
                     <StatCard
                       label="Applications"
                       value={applications.length}
@@ -1761,16 +1951,20 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     description="Successfully approved listings"
                     icon={CheckCircle2}
                   />
+
                   <StatCard
                     label="Rejected Tuitions"
                     value={rejectedTuitions.length}
                     description="Rejected tuition requests"
                     icon={XCircle}
                   />
+
                   <StatCard
                     label="Payment Records"
                     value={payments.length}
-                    description={`Recorded amount: ${formatCurrency(totalPaymentAmount)}`}
+                    description={`Recorded amount: ${formatCurrency(
+                      totalPaymentAmount
+                    )}`}
                     icon={Wallet}
                   />
                 </section>
@@ -1781,6 +1975,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                       <h2 className="font-bold text-[#101827]">
                         Pending tuition approvals
                       </h2>
+
                       <p className="mt-1 text-xs text-slate-500">
                         Review newly submitted tuition requests.
                       </p>
@@ -1810,6 +2005,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                       <h2 className="font-bold text-[#101827]">
                         Recent applications
                       </h2>
+
                       <p className="mt-1 text-xs text-slate-500">
                         Latest student applications.
                       </p>
@@ -1844,9 +2040,11 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#A77D32]">
                       Manage listings
                     </p>
+
                     <h2 className="mt-2 text-2xl font-extrabold text-[#101827]">
                       Tuition Management
                     </h2>
+
                     <p className="mt-1 text-sm text-slate-500">
                       Review, approve and reject tuition submissions.
                     </p>
@@ -1881,13 +2079,16 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                       <p
                         className={`text-xs font-semibold ${
                           tuitionFilter === filter
-                            ? "text-slate-300"
+                            ? "text-slate-200"
                             : "text-slate-500"
                         }`}
                       >
                         {label}
                       </p>
-                      <p className="mt-2 text-2xl font-extrabold">{count}</p>
+
+                      <p className="mt-2 text-2xl font-extrabold">
+                        {count}
+                      </p>
                     </button>
                   ))}
                 </div>
@@ -1900,6 +2101,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                           ? "All tuition requests"
                           : `${tuitionFilter} tuitions`}
                       </h3>
+
                       <p className="mt-1 text-xs text-slate-500">
                         {filteredTuitions.length} result(s)
                       </p>
@@ -1935,9 +2137,11 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#A77D32]">
                       Student requests
                     </p>
+
                     <h2 className="mt-2 text-2xl font-extrabold text-[#101827]">
                       Application Management
                     </h2>
+
                     <p className="mt-1 text-sm text-slate-500">
                       Review applications and update their status.
                     </p>
@@ -1957,12 +2161,14 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     description="All submitted applications"
                     icon={ClipboardList}
                   />
+
                   <StatCard
                     label="Pending"
                     value={pendingApplications.length}
                     description="Waiting for review"
                     icon={Clock3}
                   />
+
                   <StatCard
                     label="Accepted"
                     value={acceptedApplications.length}
@@ -1976,6 +2182,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     <h3 className="font-bold text-[#101827]">
                       All applications
                     </h3>
+
                     <p className="mt-1 text-xs text-slate-500">
                       {filteredApplications.length} result(s)
                     </p>
@@ -1999,16 +2206,18 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#A77D32]">
                       Platform accounts
                     </p>
+
                     <h2 className="mt-2 text-2xl font-extrabold text-[#101827]">
                       User Management
                     </h2>
+
                     <p className="mt-1 text-sm text-slate-500">
                       View all registered students, tutors and admins.
                     </p>
                   </div>
 
                   <SearchBox
-                    placeholder="Search customer, email, plan or transaction..."
+                    placeholder="Search user, email or role..."
                     value={searchTerm}
                     onChange={setSearchTerm}
                   />
@@ -2021,6 +2230,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     description="All registered accounts"
                     icon={Users}
                   />
+
                   <StatCard
                     label="Registered Tutors"
                     value={
@@ -2039,6 +2249,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     <h3 className="font-bold text-[#101827]">
                       Registered users
                     </h3>
+
                     <p className="mt-1 text-xs text-slate-500">
                       {filteredUsers.length} user(s)
                     </p>
@@ -2058,11 +2269,14 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#A77D32]">
                       Financial records
                     </p>
+
                     <h2 className="mt-2 text-2xl font-extrabold text-[#101827]">
                       Payment Overview
                     </h2>
+
                     <p className="mt-1 text-sm text-slate-500">
-                      Review payment records stored in your database.
+                      Review payments, approve Pro subscriptions or reject
+                      and refund payments.
                     </p>
                   </div>
 
@@ -2080,6 +2294,7 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     description="Total recorded payments"
                     icon={CreditCard}
                   />
+
                   <StatCard
                     label="Recorded Amount"
                     value={formatCurrency(totalPaymentAmount)}
@@ -2093,31 +2308,35 @@ const rejectAndRefundPayment = async (payment: Payment) => {
                     <h3 className="font-bold text-[#101827]">
                       Payment history
                     </h3>
+
                     <p className="mt-1 text-xs text-slate-500">
                       {filteredPayments.length} payment record(s)
                     </p>
                   </div>
 
                   <PaymentsTable
-  items={filteredPayments}
-  rejectingId={rejectingPaymentId}
-  onReject={rejectAndRefundPayment}
-/>
+                    items={filteredPayments}
+                    approvingId={approvingPaymentId}
+                    rejectingId={rejectingPaymentId}
+                    onApprove={approvePayment}
+                    onReject={rejectAndRefundPayment}
+                  />
                 </div>
 
                 <p className="text-xs leading-5 text-slate-400">
-                  Note: The amount shown is the sum of the amount fields
-                  returned by your API. It should not be treated as confirmed
-                  revenue unless your payment records distinguish successful
-                  transactions.
+                  Note: Recorded amounts are based on the payment records
+                  returned by your API. They should not be treated as
+                  confirmed revenue unless successful transactions are
+                  distinguished.
                 </p>
               </section>
             )}
 
-            <footer className="flex flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-xs text-slate-400 sm:flex-row sm:items-center">
+            <footer className="flex flex-col justify-between gap-2 border-t border-slate-200 pt-5 text-xs text-slate-500 sm:flex-row sm:items-center">
               <p>
                 © {new Date().getFullYear()} MentorLagbe. Admin Dashboard.
               </p>
+
               <p className="flex items-center gap-1">
                 <ShieldCheck size={14} className="text-[#B18B4B]" />
                 Secure administration workspace

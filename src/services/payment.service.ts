@@ -3,6 +3,14 @@ import axiosInstance from "@/lib/axios";
 
 export type SubscriptionPlan = "student-pro" | "tutor-pro";
 
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
+export type RefundStatus =
+  | "not_refunded"
+  | "pending"
+  | "succeeded"
+  | "failed";
+
 export interface PaymentRecord {
   _id: string;
   userId: string;
@@ -15,14 +23,20 @@ export interface PaymentRecord {
   currency: string;
   transactionId: string;
   stripeSessionId: string;
-  paymentStatus: "paid" | "pending" | "failed";
+  stripeSubscriptionId?: string;
+  stripePaymentIntentId?: string;
+  paymentStatus: "paid" | "pending" | "failed" | "refunded";
+  approvalStatus: ApprovalStatus;
+  refundStatus?: RefundStatus;
+  subscriptionStatus?: string;
   paidAt: string;
   createdAt: string;
 }
 
 export const paymentService = {
-  // Create Student PRO ($10/month) or Tutor PRO ($15/month) checkout
-  async createCheckoutSession(plan: SubscriptionPlan): Promise<string> {
+  async createCheckoutSession(
+    plan: SubscriptionPlan
+  ): Promise<string> {
     const { data } = await axiosInstance.post(
       "/api/payments/create-checkout-session",
       { plan }
@@ -39,28 +53,54 @@ export const paymentService = {
     return checkoutUrl;
   },
 
-  // Verify Stripe Checkout Session
-  async verifyCheckoutSession(sessionId: string): Promise<void> {
+  async verifyCheckoutSession(
+    sessionId: string
+  ): Promise<{
+    approvalStatus: ApprovalStatus;
+    plan: string;
+    message: string;
+  }> {
     if (!sessionId) {
       throw new Error("Stripe session ID is missing.");
     }
 
-    await axiosInstance.post("/api/payments/verify-session", {
-      sessionId,
-    });
+    const { data } = await axiosInstance.post(
+      "/api/payments/verify-session",
+      { sessionId }
+    );
+
+    return data;
   },
 
-  // Logged-in user's payment history
   async getMyPayments(): Promise<PaymentRecord[]> {
-    const { data } = await axiosInstance.get("/api/payments/my-payments");
+    const { data } = await axiosInstance.get(
+      "/api/payments/my-payments"
+    );
 
     return data.payments ?? data.data ?? [];
   },
 
-  // Admin payment history
   async getAllPayments(): Promise<PaymentRecord[]> {
-    const { data } = await axiosInstance.get("/api/admin/payments");
+    const { data } = await axiosInstance.get(
+      "/api/payments/admin/all"
+    );
 
     return data.payments ?? data.data ?? [];
+  },
+
+  async approvePayment(paymentId: string) {
+    const { data } = await axiosInstance.post(
+      `/api/payments/admin/${paymentId}/approve`
+    );
+
+    return data;
+  },
+
+  async rejectPayment(paymentId: string) {
+    const { data } = await axiosInstance.post(
+      `/api/payments/admin/${paymentId}/reject`
+    );
+
+    return data;
   },
 };
