@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -18,6 +18,8 @@ import {
   Send,
   AlertCircle,
   ImageIcon,
+  Mail,
+  Phone,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -45,13 +47,11 @@ interface Tuition {
   description?: string;
   requirements?: string[];
   status?: string;
-
   tutor?: {
     _id?: string;
     name?: string;
     email?: string;
   };
-
   tutorName?: string;
   bannerImage?: string;
   image?: string;
@@ -63,6 +63,12 @@ interface Application {
   _id: string;
   tuitionId: string;
   status: string;
+}
+
+interface AuthUser {
+  name?: string;
+  email?: string;
+  role?: string;
 }
 
 function getSchedule(tuition: Tuition) {
@@ -96,6 +102,8 @@ export default function TuitionDetailsPage() {
     isStudent,
   } = useAuth();
 
+  const account = user as AuthUser | null;
+
   const [tuition, setTuition] = useState<Tuition | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
@@ -106,6 +114,11 @@ export default function TuitionDetailsPage() {
 
   const [bookmarkLoading, setBookmarkLoading] = useState(false);
   const [applying, setApplying] = useState(false);
+
+  // Student application information
+  const [studentName, setStudentName] = useState("");
+  const [studentEmail, setStudentEmail] = useState("");
+  const [studentPhone, setStudentPhone] = useState("");
   const [message, setMessage] = useState("");
 
   // FETCH TUITION DETAILS
@@ -171,79 +184,22 @@ export default function TuitionDetailsPage() {
     };
   }, [id]);
 
-  // LOAD STUDENT BOOKMARK AND APPLICATION STATUS
-  const loadStudentData = useCallback(async () => {
-    if (!isAuthenticated || !isStudent || !id) {
-      return;
-    }
-
-    try {
-      const [bookmarkResponse, applicationResponse] =
-        await Promise.allSettled([
-          axiosInstance.get("/api/bookmarks", {
-            timeout: 15000,
-          }),
-          axiosInstance.get(
-            "/api/applications/my-applications",
-            { timeout: 15000 }
-          ),
-        ]);
-
-      if (bookmarkResponse.status === "fulfilled") {
-        const result = bookmarkResponse.value.data;
-
-        const bookmarks = Array.isArray(result?.data)
-          ? result.data
-          : Array.isArray(result?.bookmarks)
-            ? result.bookmarks
-            : [];
-
-        const isSaved = bookmarks.some(
-          (item: {
-            _id?: string;
-            id?: string;
-            tuitionId?: string;
-          }) =>
-            String(item.tuitionId || "") === id ||
-            String(item._id || "") === id ||
-            String(item.id || "") === id
-        );
-
-        setSaved(isSaved);
-      }
-
-      if (applicationResponse.status === "fulfilled") {
-        const result = applicationResponse.value.data;
-
-        const applications: Application[] =
-          Array.isArray(result?.data)
-            ? result.data
-            : Array.isArray(result?.applications)
-              ? result.applications
-              : [];
-
-        const existingApplication = applications.find(
-          (item) => String(item.tuitionId) === id
-        );
-
-        if (existingApplication) {
-          setHasApplied(true);
-          setApplicationStatus(
-            existingApplication.status || "pending"
-          );
-        } else {
-          setHasApplied(false);
-          setApplicationStatus("");
-        }
-      }
-    } catch (error) {
-      console.error("Student data loading error:", error);
-    }
-  }, [id, isAuthenticated, isStudent]);
-
-  // FETCH STUDENT DATA AFTER AUTHENTICATION IS READY
+  // PREFILL STUDENT NAME AND EMAIL FROM ACCOUNT
   useEffect(() => {
-    if (authLoading || !isAuthenticated || !isStudent) {
+    if (!account) return;
+
+    setStudentName((current) =>
+      current || account.name || ""
+    );
+
+    setStudentEmail((current) =>
+      current || account.email || ""
+    );
+  }, [account?.name, account?.email]);
+
+  // FETCH STUDENT BOOKMARK AND APPLICATION STATUS
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !isStudent || !id) {
       return;
     }
 
@@ -387,6 +343,38 @@ export default function TuitionDetailsPage() {
       return;
     }
 
+    const finalName = studentName.trim();
+    const finalEmail = studentEmail.trim().toLowerCase();
+    const finalPhone = studentPhone.trim();
+
+    if (!finalName) {
+      toast.error("Please enter your full name.");
+      return;
+    }
+
+    if (!finalEmail) {
+      toast.error("Please enter your email address.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(finalEmail)) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+
+    if (!finalPhone) {
+      toast.error("Please enter your phone number.");
+      return;
+    }
+
+    if (
+      finalPhone.length < 7 ||
+      finalPhone.length > 20
+    ) {
+      toast.error("Please enter a valid phone number.");
+      return;
+    }
+
     if (!id || applying || hasApplied) return;
 
     setApplying(true);
@@ -396,6 +384,9 @@ export default function TuitionDetailsPage() {
         "/api/applications",
         {
           tuitionId: id,
+          name: finalName,
+          email: finalEmail,
+          phone: finalPhone,
           message: message.trim(),
         }
       );
@@ -406,6 +397,7 @@ export default function TuitionDetailsPage() {
       setApplicationStatus(
         result?.data?.status || "pending"
       );
+
       setMessage("");
 
       toast.success(
@@ -761,6 +753,79 @@ export default function TuitionDetailsPage() {
               </div>
             ) : isStudent ? (
               <div className="mt-5 space-y-4">
+                {/* STUDENT NAME */}
+                <div>
+                  <label
+                    htmlFor="student-name"
+                    className="mb-2 flex items-center gap-2 text-sm font-semibold"
+                  >
+                    <UserRound size={16} className="text-[#B58A39]" />
+                    Full Name
+                  </label>
+
+                  <input
+                    id="student-name"
+                    type="text"
+                    value={studentName || account?.name || ""}
+                    onChange={(event) =>
+                      setStudentName(event.target.value)
+                    }
+                    maxLength={100}
+                    placeholder="Enter your full name"
+                    autoComplete="name"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none transition focus:border-[#B58A39]"
+                  />
+                </div>
+
+                {/* STUDENT EMAIL */}
+                <div>
+                  <label
+                    htmlFor="student-email"
+                    className="mb-2 flex items-center gap-2 text-sm font-semibold"
+                  >
+                    <Mail size={16} className="text-[#B58A39]" />
+                    Email Address
+                  </label>
+
+                  <input
+                    id="student-email"
+                    type="email"
+                    value={studentEmail || account?.email || ""}
+                    onChange={(event) =>
+                      setStudentEmail(event.target.value)
+                    }
+                    maxLength={254}
+                    placeholder="Enter your email address"
+                    autoComplete="email"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none transition focus:border-[#B58A39]"
+                  />
+                </div>
+
+                {/* STUDENT PHONE */}
+                <div>
+                  <label
+                    htmlFor="student-phone"
+                    className="mb-2 flex items-center gap-2 text-sm font-semibold"
+                  >
+                    <Phone size={16} className="text-[#B58A39]" />
+                    Phone Number
+                  </label>
+
+                  <input
+                    id="student-phone"
+                    type="tel"
+                    value={studentPhone}
+                    onChange={(event) =>
+                      setStudentPhone(event.target.value)
+                    }
+                    maxLength={20}
+                    placeholder="e.g. 01XXXXXXXXX"
+                    autoComplete="tel"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none transition focus:border-[#B58A39]"
+                  />
+                </div>
+
+                {/* MESSAGE */}
                 <div>
                   <label
                     htmlFor="application-message"
@@ -789,7 +854,7 @@ export default function TuitionDetailsPage() {
                 <button
                   type="button"
                   onClick={() => void handleApply()}
-                  disabled={applying}
+                  disabled={applying || hasApplied}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#101F32] px-5 py-3.5 text-sm font-bold text-white transition hover:bg-[#1c3552] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {applying ? (
@@ -807,11 +872,15 @@ export default function TuitionDetailsPage() {
                     </>
                   )}
                 </button>
+
+                <p className="text-center text-xs leading-5 text-muted-foreground">
+                  Your name, email and phone number will be shared with the tutor for this application.
+                </p>
               </div>
             ) : isAuthenticated ? (
               <div className="mt-6 rounded-xl bg-muted p-4 text-center">
                 <p className="text-sm font-semibold">
-                  You are signed in as {user?.role}.
+                  You are signed in as {account?.role || "a user"}.
                 </p>
 
                 <p className="mt-2 text-xs leading-6 text-muted-foreground">
@@ -822,7 +891,7 @@ export default function TuitionDetailsPage() {
               <>
                 <Link
                   href="/login"
-                  className="mt-6 block rounded-xl bg-[#8c8c20] px-5 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#1c3552]"
+                  className="mt-6 block rounded-xl bg-[#101F32] px-5 py-3.5 text-center text-sm font-bold text-white transition hover:bg-[#1c3552]"
                 >
                   Sign In to Apply
                 </Link>
